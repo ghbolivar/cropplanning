@@ -1,4 +1,4 @@
-/* CPSTextFilter.java - created: Jan 31, 2008
+/* CPSComplexFilter.java - created: Jan 31, 2008
  * Copyright (C) 2008 Clayton Carter
  * 
  * This file is part of the project "Crop Planning Software".  For more
@@ -23,17 +23,9 @@
 
 package CPS.Data;
 
-import ca.odell.glazedlists.BasicEventList;
-import ca.odell.glazedlists.EventList;
-import ca.odell.glazedlists.TextFilterator;
-import ca.odell.glazedlists.matchers.AbstractMatcherEditor;
-import ca.odell.glazedlists.matchers.CompositeMatcherEditor;
-import ca.odell.glazedlists.matchers.Matcher;
-import ca.odell.glazedlists.matchers.MatcherEditor;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.GregorianCalendar;
-import javax.swing.text.JTextComponent;
 
 /**
  * A class to hold/represent information about a "view" or filter of a data
@@ -46,11 +38,11 @@ import javax.swing.text.JTextComponent;
  * 
  * Filtering on dates: Does the planting/transplanting/harvest date for a record
  * fall within a certain range.
- *
- * <b>Note</b>: this does not support or represent a free form text filter
+ * 
+ * A general, user defined, free form filter string.
  *
  */
-public class CPSComplexPlantingFilter extends AbstractMatcherEditor<CPSPlanting> implements Matcher<CPSPlanting> {
+public class CPSComplexPlantingFilter extends CPSComplexFilter {
 
     private boolean metaViewLimited;
     
@@ -71,118 +63,33 @@ public class CPSComplexPlantingFilter extends AbstractMatcherEditor<CPSPlanting>
     
     private boolean filterOnAnyDate;
     private Date anyDateRangeStart, anyDateRangeEnd;
-
+    
     public CPSComplexPlantingFilter() {
-       
-       reset();
-
+        super();
+        setFilterOnPlanting(false);
+        setFilterOnTransplanting(false);
+        setFilterOnHarvest(false);
+        
+        setFilterOnPlantingDate(false);
+        setFilterOnTPDate(false);
+        setFilterOnHarvestDate(false);
+        setFilterOnAnyDate(false);
+        
+        setViewLimited(false);
     }
-
-    public void reset() {
-       setFilterOnPlantingMethod( false );
-
-       setFilterOnPlanting( false );
-       setFilterOnTransplanting( false );
-       setFilterOnHarvest( false );
-
-       setFilterOnPlantingDate( false );
-       setFilterOnTPDate( false );
-       setFilterOnHarvestDate( false );
-       setFilterOnAnyDate( false );
-
-       setViewLimited( false );
+    
+    public CPSComplexPlantingFilter( String f ) {
+        this();
+        setFilterString( f );
     }
-
-    public void changed() { fireChanged( this ); }
-
-   public MatcherEditor<CPSPlanting> getMatcherEditor() {
-      return this;
-   }
-
-   @Override
-   // TODO ideally this would create a new, immutable matcher each time it's called
-   public Matcher getMatcher() {
-      return this;
-   }
-
-   public boolean matches( CPSPlanting item ) {
-
-
-      if ( item.getIgnore() )
-         return false;
-
-      if ( ! isViewLimited() )
-         return true;
-
-      return ( filterOnPlantingMethod() ? (( filterMethodDirectSeed() ? item.isDirectSeeded() : true ) &&
-                                           ( filterMethodTransplant() ? item.isTransplanted() : true ))
-                                        : true ) &&
-             ( filterOnPlanting() ? isDonePlanting() == item.getDonePlanting() : true ) &&
-             ( filterOnTransplanting() ? isDoneTransplanting() == item.getDoneTP() : true ) &&
-             ( filterOnHarvest() ? isDoneHarvesting() == item.getDoneHarvest() : true );
-
-//           if ( filterOnAnyDate() ) {
-//               if      ( getAnyDateRangeEnd() == null )
-//                   filterString += " ( date_plant   >= " + escapeValue( getAnyDateRangeStart() ) + " OR " +
-//                                   "   date_tp      >= " + escapeValue( getAnyDateRangeStart() ) + " OR " +
-//                                   "   date_harvest >= " + escapeValue( getAnyDateRangeStart() ) + " ) ";
-//               else if ( getAnyDateRangeStart() == null )
-//                   filterString += " ( date_plant   <= " + escapeValue( getAnyDateRangeEnd() ) + " OR " +
-//                                   "   date_tp      <= " + escapeValue( getAnyDateRangeEnd() ) + " OR " +
-//                                   "   date_harvest <= " + escapeValue( getAnyDateRangeEnd() ) + " ) ";
-//               else { // both != null
-//                   filterString += " ( date_plant   BETWEEN " + escapeValue( getAnyDateRangeStart() ) + " AND " +
-//                                                                escapeValue( getAnyDateRangeEnd() )   + " OR ";
-//                   filterString += "   date_tp      BETWEEN " + escapeValue( getAnyDateRangeStart() ) + " AND " +
-//                                                                escapeValue( getAnyDateRangeEnd() )   + " OR ";
-//                   filterString += "   date_harvest BETWEEN " + escapeValue( getAnyDateRangeStart() ) + " AND " +
-//                                                                escapeValue( getAnyDateRangeEnd() )   + " ) ";
-//               }
-//              filterString += " AND ";
-//           }
-//           else {
-//              if ( filterOnPlantingDate() ) {
-//                 if ( getPlantingRangeEnd() == null )
-//                    filterString += "date_plant >= " + escapeValue( getPlantingRangeStart() );
-//                 else if ( getPlantingRangeStart() == null )
-//                    filterString += "date_plant <= " + escapeValue( getPlantingRangeEnd() );
-//                 else // both != null
-//                    filterString += "date_plant BETWEEN " + escapeValue( getPlantingRangeStart() ) + " AND " +
-//                                                            escapeValue( getPlantingRangeEnd() );
-//                 filterString += " AND ";
-//              }
-//
-//              if ( filterOnTPDate() ) {
-//                 if ( getTpRangeEnd() == null )
-//                    filterString += "date_tp >= " + escapeValue( getTpRangeStart() );
-//                 else if ( getTpRangeStart() == null )
-//                    filterString += "date_tp <= " + escapeValue( getTpRangeEnd() );
-//                 else // both != null
-//                    filterString += "date_tp BETWEEN " + escapeValue( getTpRangeStart() ) + " AND " +
-//                                                         escapeValue( getTpRangeEnd() );
-//                 filterString += " AND ";
-//              }
-//
-//              if ( filterOnHarvestDate() ) {
-//                 if ( getHarvestDateEnd() == null )
-//                    filterString += "date_harvest >= " + escapeValue( getHarvestDateStart() );
-//                 else if ( getHarvestDateStart() == null )
-//                    filterString += "date_harvest <= " + escapeValue( getHarvestDateEnd() );
-//                 else // both != null
-//                    filterString += "date_harvest BETWEEN " + escapeValue( getHarvestDateStart() ) + " AND " +
-//                                                              escapeValue( getHarvestDateEnd() );
-//                 filterString += " AND ";
-//              }
-   }
-
-
-
+    
+    
     public boolean isViewLimited() { return metaViewLimited; }
     public void setViewLimited( boolean b ) { metaViewLimited = b; }
-
-    /* ***************************************************************** */
-    /* PLANTING METHOD
-    /* ***************************************************************** */
+    
+    /*
+     * PLANTING METHOD
+     */
     public boolean filterOnPlantingMethod() { return filterOnPlantingMeth; }
     public boolean setFilterOnPlantingMethod( boolean b ) { return filterOnPlantingMeth = b; }
     
@@ -192,9 +99,9 @@ public class CPSComplexPlantingFilter extends AbstractMatcherEditor<CPSPlanting>
     public boolean filterMethodTransplant() { return ! filterMethodDirectSeed(); }
     public boolean setFilterMethodTransplant( boolean b ) { return setFilterMethodDirectSeed( ! b ); }
     
-    /* ***************************************************************** */
-    /* PLANTING/TP/HARVEST COMPLETED
-    /* ***************************************************************** */
+    /*
+     * PLANTING/TP/HARVEST COMPLETED
+     */
     public boolean setFilterOnPlanting( boolean filterOnPlanting ) { return this.filterOnPlanting = filterOnPlanting; }
     public boolean setFilterOnTransplanting( boolean filterOnTransplanting ) { return this.filterOnTransplanting = filterOnTransplanting; }
     public boolean setFilterOnHarvest( boolean filterOnHarvest ) { return this.filterOnHarvest = filterOnHarvest; }
@@ -212,9 +119,9 @@ public class CPSComplexPlantingFilter extends AbstractMatcherEditor<CPSPlanting>
     public boolean isDoneHarvesting() { return doneHarvesting; }
     
 
-    /* ***************************************************************** */
-    /* DATES
-    /* ***************************************************************** */
+    /*
+     * DATES
+     */
     public boolean setFilterOnPlantingDate( boolean filterOnPlantingDate ) { return this.filterOnPlantingDate = filterOnPlantingDate; }
     public boolean setFilterOnTPDate( boolean filterOnTPDate ) { return this.filterOnTPDate = filterOnTPDate; }
     public boolean setFilterOnHarvestDate( boolean filterOnHarvestDate ) { return this.filterOnHarvestDate = filterOnHarvestDate; }
@@ -242,170 +149,117 @@ public class CPSComplexPlantingFilter extends AbstractMatcherEditor<CPSPlanting>
     public Date getHarvestDateEnd() { return harvestRangeEnd; }
     public Date getAnyDateRangeStart() { return anyDateRangeStart; }
     public Date getAnyDateRangeEnd() { return anyDateRangeEnd; }
-
-
-    /* ***************************************************************** */
-    /* methods to alter the filter in place
-    /* ***************************************************************** */
-    public void setAsDirectSeededFilter() {
-       reset();
-       setViewLimited(true);
-       setFilterOnPlantingMethod(true);
-       setFilterMethodDirectSeed(true);
-       changed();
-    }
-
-    public void setAsTransplatedFilter() {
-       reset();
-       setViewLimited(true);
-       setFilterOnPlantingMethod( true );
-       setFilterMethodTransplant(true);
-       changed();
-    }
-
-    public void setAsAllNotPlantedFilter() {
-       reset();
-       setViewLimited(true);
-       setFilterOnPlanting(true);
-       setDonePlanting(false);
-       changed();
-    }
-
-    public void setAsDSNotPlantedFilter() {
-       reset();
-       setAsAllNotPlantedFilter();
-
-       setFilterOnPlantingMethod(true);
-       setFilterMethodDirectSeed(true);
-       changed();
-    }
-
-    public void setAsTPNotSeededFilter() {
-       reset();
-       setAsAllNotPlantedFilter();
-
-       setFilterOnPlantingMethod(true);
-       setFilterMethodTransplant(true);
-       changed();
-    }
-
-    public void setAsTPSeededNotPlantedFilter() {
-       reset();
-       setAsTPNotSeededFilter();
-
-       setFilterOnPlanting(true);
-       setDonePlanting(true);
-
-       setFilterOnTransplanting(true);
-       setDoneTransplanting(false);
-       changed();
-    }
-
-    public void setAsThisWeekFilter() {
-       reset();
-
-       GregorianCalendar temp = new GregorianCalendar();
-       temp.setTime( new Date() );
-
-       setViewLimited(true);
-       setFilterOnAnyDate(true);
-
-       temp.set( Calendar.DAY_OF_WEEK, Calendar.SUNDAY );
-       setAnyDateRangeStart( temp.getTime() );
-
-       temp.set( Calendar.DAY_OF_WEEK, Calendar.SATURDAY );
-       setAnyDateRangeEnd( temp.getTime() );
-       changed();
-    }
-
-    public void setAsNextWeekFilter() {
-       reset();
-       setAsThisWeekFilter();
-
-       GregorianCalendar temp = new GregorianCalendar();
-       temp.setTime( new Date() );
-
-       // start day should be this Sunday ...
-       temp.setTime( getAnyDateRangeStart() );
-       // ... so we add a week
-       temp.add( GregorianCalendar.WEEK_OF_YEAR, 1 );
-       setAnyDateRangeStart( temp.getTime() );
-
-       temp.set( GregorianCalendar.DAY_OF_WEEK, GregorianCalendar.SATURDAY );
-       setAnyDateRangeEnd( temp.getTime() );
-       changed();
-    }
-
-    public void setAsThisAndNextWeekFilter() {
-       reset();
-       setAsThisWeekFilter();
-
-       GregorianCalendar temp = new GregorianCalendar();
-
-       // leave start date alone, since it should be OK already
-       // end day should be this Saturday ...
-       temp.setTime( getAnyDateRangeEnd() );
-       // ... so we add a week
-       temp.add( GregorianCalendar.WEEK_OF_YEAR, 1 );
-       setAnyDateRangeEnd( temp.getTime() );
-       changed();
-   }
     
-    /* ***************************************************************** */
-    /* STATIC factory methods for default "filters"
-    /* ***************************************************************** */
+    
+    /*
+     * STATIC methods for default "filters"
+     * 
+     */
     public static CPSComplexPlantingFilter directSeededFilter() {
         CPSComplexPlantingFilter ds = new CPSComplexPlantingFilter();
-        ds.setAsDirectSeededFilter();
+        ds.setViewLimited(true);
+        ds.setFilterOnPlantingMethod(true);
+        ds.setFilterMethodDirectSeed(true);
         return ds;
     }
     
     public static CPSComplexPlantingFilter transplantedFilter() {
         CPSComplexPlantingFilter tp = new CPSComplexPlantingFilter();
-        tp.setAsTransplatedFilter();
+        tp.setViewLimited(true);
+        tp.setFilterOnPlantingMethod(true);
+        tp.setFilterMethodTransplant(true);
         return tp;
     }
     
     public static CPSComplexPlantingFilter allNotPlantedFilter() {
        CPSComplexPlantingFilter f = new CPSComplexPlantingFilter();
-       f.setAsAllNotPlantedFilter();
+       
+       f.setViewLimited(true);
+       
+       f.setFilterOnPlanting(true);
+       f.setDonePlanting(false);
+       
        return f;
     }
     
     public static CPSComplexPlantingFilter DSNotPlantedFilter() {
-       CPSComplexPlantingFilter f = new CPSComplexPlantingFilter();
-       f.setAsDSNotPlantedFilter();
+       CPSComplexPlantingFilter f = allNotPlantedFilter();
+       f.setFilterOnPlantingMethod(true);
+       f.setFilterMethodDirectSeed(true);
        return f;
     }
     
     public static CPSComplexPlantingFilter TPNotSeededFilter() {
-       CPSComplexPlantingFilter f = new CPSComplexPlantingFilter();
-       f.setAsTPNotSeededFilter();
+       CPSComplexPlantingFilter f = allNotPlantedFilter();
+       f.setFilterOnPlantingMethod(true);
+       f.setFilterMethodTransplant(true);
        return f;
     }
     
     public static CPSComplexPlantingFilter TPSeededNotPlantedFilter() {
-       CPSComplexPlantingFilter f = new CPSComplexPlantingFilter();
-       f.setAsTPSeededNotPlantedFilter();
+       CPSComplexPlantingFilter f = TPNotSeededFilter();
+       
+       f.setFilterOnPlanting(true);
+       f.setDonePlanting(true);
+       
+       f.setFilterOnTransplanting(true);
+       f.setDoneTransplanting(false);
+       
        return f;
     }
     
     public static CPSComplexPlantingFilter thisWeekFilter() {
+       
        CPSComplexPlantingFilter f = new CPSComplexPlantingFilter();
-       f.setAsThisWeekFilter();
+       GregorianCalendar temp = new GregorianCalendar();
+       temp.setTime( new Date() );
+       
+       f.setViewLimited(true);
+       f.setFilterOnAnyDate(true);
+       
+       temp.set( Calendar.DAY_OF_WEEK, Calendar.SUNDAY );
+       f.setAnyDateRangeStart( temp.getTime() );
+
+       temp.set( Calendar.DAY_OF_WEEK, Calendar.SATURDAY );
+       f.setAnyDateRangeEnd( temp.getTime() );
+    
        return f;
+       
     }
     
     public static CPSComplexPlantingFilter nextWeekFilter() {
-       CPSComplexPlantingFilter f = new CPSComplexPlantingFilter();
-       f.setAsNextWeekFilter();
+       
+       GregorianCalendar temp = new GregorianCalendar();
+       temp.setTime( new Date() );
+       CPSComplexPlantingFilter f = thisWeekFilter();
+       
+       // start day should be this Sunday ...
+       temp.setTime( f.getAnyDateRangeStart() );
+       // ... so we add a week
+       temp.add( GregorianCalendar.WEEK_OF_YEAR, 1 );
+       f.setAnyDateRangeStart( temp.getTime() );
+       
+       temp.set( GregorianCalendar.DAY_OF_WEEK, GregorianCalendar.SATURDAY );
+       f.setAnyDateRangeEnd( temp.getTime() );
+       
        return f;
     }
     
     public static CPSComplexPlantingFilter thisAndNextWeekFilter() {
-       CPSComplexPlantingFilter f = new CPSComplexPlantingFilter();
-       f.setAsThisAndNextWeekFilter();
+    
+       GregorianCalendar temp = new GregorianCalendar();
+       CPSComplexPlantingFilter f = thisWeekFilter();
+       
+       // leave start date alone, since it should be OK already
+       
+       // end day should be this Saturday ...
+       temp.setTime( f.getAnyDateRangeEnd() );
+       // ... so we add a week
+       temp.add( GregorianCalendar.WEEK_OF_YEAR, 1 );
+       f.setAnyDateRangeEnd( temp.getTime() );
+       
        return f;
+    
     }
     
 }

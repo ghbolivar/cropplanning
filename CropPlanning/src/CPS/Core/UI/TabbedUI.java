@@ -93,7 +93,7 @@ public class TabbedUI extends CPSUI implements ActionListener {
        
        setModuleName( "CPSTabbedUI" );
        setModuleType( "UI" );
-       setModuleVersion( CPSGlobalSettings.getVersion() );
+       setModuleVersion( GLOBAL_DEVEL_VERSION );
        
        fm = new FrameManager();
        moduleList = new ArrayList<CPSModule>();

@@ -33,7 +33,7 @@ public class CropPlans extends CPSMasterDetailModule implements CPSExportable, C
       
       setModuleName( "CropPlans" );
       setModuleType( "Core" );
-      setModuleVersion( CPSGlobalSettings.getVersion() );
+      setModuleVersion( GLOBAL_DEVEL_VERSION );
       
       initPrefs( CropPlans.class );
       
@@ -57,7 +57,7 @@ public class CropPlans extends CPSMasterDetailModule implements CPSExportable, C
             String fileName = CPSGlobalSettings.getDocumentOutputDir() + 
                               System.getProperty( "file.separator" ) +
                               "ExportedCropPlan - " + planName + "." + exp.getExportFileDefaultExtension(); 
-            exp.exportCropPlan( fileName, planName, getDataSource().getCropPlan( planName ));
+            exp.exportCropPlan( fileName, planName, getDataSource().getCropPlanAsList( planName ));
         }
         else {
             System.err.println("ERROR(CropPlans): No data exported, no data available.");

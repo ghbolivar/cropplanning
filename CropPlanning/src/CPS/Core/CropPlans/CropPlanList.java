@@ -32,24 +32,16 @@ import CPS.UI.Modules.CPSMasterDetailModule;
 import CPS.UI.Swing.CPSComplexFilterDialog;
 import CPS.UI.Swing.CPSTable.CPSComboBoxCellEditor;
 import CPS.UI.Swing.autocomplete.*;
-import ca.odell.glazedlists.FunctionList;
-import ca.odell.glazedlists.TextFilterator;
-import ca.odell.glazedlists.calculation.Calculation;
-import ca.odell.glazedlists.calculation.Calculations;
-import ca.odell.glazedlists.gui.AdvancedTableFormat;
 import java.awt.*;
 import java.awt.event.*;
-import java.beans.PropertyChangeEvent;
-import java.beans.PropertyChangeListener;
-import java.util.List;
 import java.util.ArrayList;
 import java.util.Collections;
 import javax.swing.*;
+import javax.swing.table.*;
 
 // package access
 class CropPlanList extends CPSMasterView implements ActionListener,
-                                                    ItemListener,
-                                                    PropertyChangeListener {
+                                                    ItemListener {
    
    protected static final String KEY_FILTER = "LAST_FILTER";
    
@@ -71,21 +63,16 @@ class CropPlanList extends CPSMasterView implements ActionListener,
     protected static final String LIMIT_TP_NOT_S  = "just TP: not seeded";
     protected static final String LIMIT_TP_NOT_P  = "just TP: seeded, not planted";
     protected static final String LIMIT_CUSTOM    = "custom..."; // TODO, this is a terrible name
+    private JButton btnLimit;
     private CPSComplexFilterDialog dlgFilter;
-
-    private CPSComplexPlantingFilter plantingFilter;
-
-    private List<String> listOfValidCrops, listOfFields;
-
-    private Calculation<Integer> summaryPlantings = null;
-    private Calculation<Integer> summaryRowFt = null;
-    private Calculation<Float> summaryBeds = null, summaryFlats = null;
-
+    
+//    private ArrayList<String> listOfValidCropPlans;
+    private ArrayList<String> listOfValidCrops, listOfFields;
     
     public CropPlanList( CPSMasterDetailModule mdm ) {
         super(mdm);
-        plantingFilter = new CPSComplexPlantingFilter();
-        addFilter( plantingFilter );
+        setSortColumn( CPSDataModelConstants.PROP_DATE_PLANT );
+        filter = new CPSComplexPlantingFilter();
         dlgFilter = new CPSComplexFilterDialog();
 //        loadPrefs();
         planMan = new PlanManager();
@@ -108,42 +95,7 @@ class CropPlanList extends CPSMasterView implements ActionListener,
       
       updateListOfCrops();
       updateListOfFieldNames();
-
-
-      // setup for the summary string
-
-      FunctionList rftList =
-              new FunctionList<CPSRecord, Integer>( masterListFiltered,
-                                                 new FunctionList.Function<CPSRecord, Integer>() {
-                                                    public Integer evaluate( CPSRecord p ) {
-                                                       return ( (CPSPlanting) p ).getRowFtToPlant();
-                                                    }} );
-
-      FunctionList bedsList =
-              new FunctionList<CPSRecord, Float>( masterListFiltered,
-                                                  new FunctionList.Function<CPSRecord, Float>() {
-                                                     public Float evaluate( CPSRecord p ) {
-                                                        return ( (CPSPlanting) p ).getBedsToPlant();
-                                                     }} );
-
-      FunctionList flatsList =
-              new FunctionList<CPSRecord, Float>( masterListFiltered,
-                                                  new FunctionList.Function<CPSRecord, Float>() {
-                                                     public Float evaluate( CPSRecord p ) {
-                                                        return ( (CPSPlanting) p ).getFlatsNeeded();
-                                                     }} );
-
-
-      summaryPlantings = Calculations.count( masterListFiltered );
-      summaryRowFt = Calculations.sumIntegers( rftList );
-      summaryBeds = Calculations.sumFloats( bedsList );
-      summaryFlats = Calculations.sumFloats( flatsList );
-
-//      masterListFiltered.addListEventListener( this );
-//      rftList.addListEventListener( this );
-      summaryFlats.addPropertyChangeListener( this );
-//      updateStatisticsLabel();
-     
+      
    }
 
    @Override
@@ -171,7 +123,7 @@ class CropPlanList extends CPSMasterView implements ActionListener,
        return getDataSource().getPlanting( getDisplayedTableName(), id );
     }
 
-    protected CPSPlanting getDetailsForIDs( List<Integer> ids ) {
+    protected CPSPlanting getDetailsForIDs( ArrayList<Integer> ids ) {
        return getDataSource().getCommonInfoForPlantings( getDisplayedTableName(), ids );
     }
     
@@ -206,11 +158,10 @@ class CropPlanList extends CPSMasterView implements ActionListener,
         
     }
     
-   @Override
     protected void updateMasterList() {
        super.updateMasterList();
 
-       if ( masterTable.getRowCount() > 0 )
+       if ( masterTable.getRowCount() > 0 ) 
            // install custom table renderes and editors
            for ( int i = 0; i < masterTable.getColumnModel().getColumnCount(); i++ ) {
                // install autocomplete combobox in column "crop_name"
@@ -224,40 +175,28 @@ class CropPlanList extends CPSMasterView implements ActionListener,
                }
            }
     }
-
-
-
-    protected List getMasterListData() {
+       
+       
+    protected TableModel getMasterListData() {
         if ( !isDataAvailable() )
-            return new ArrayList<CPSPlanting>();
-
-        String selectedPlan = getSelectedPlanName();
+            return new DefaultTableModel();
+         
+        String selectedPlan = getSelectedPlanName();       
 //        if ( selectedPlan != null && listOfValidCropPlans.contains( selectedPlan ) )
         if ( selectedPlan != null )
-            return getDataSource().getCropPlan( selectedPlan );
+            return getDataSource().getCropPlan( selectedPlan, getDisplayedColumnList(), getSortColumn(),
+                                                (CPSComplexPlantingFilter) getFilter() );
+//            return getDataSource().getCropPlan( selectedPlan, getSortColumn(), getFilterString() );
        else
           // TODO error checking fall through to following call when invalid plan is selected
-          return new ArrayList();
-
-    }
-
-    @Override
-    protected AdvancedTableFormat getTableFormat() {
-        return new CropPlanTableFormat();
-    }
-
-
-    @Override
-    protected TextFilterator getTextFilterator() {
-        return new CropPlanFilterator();
-    }
+          return new DefaultTableModel();
        
+    }
     
 //    protected String getDisplayedTableName() { return (String) cmbxPlanList.getSelectedItem(); }
     protected String getDisplayedTableName() { return planMan.getSelectedPlanName(); }
     String getSelectedPlanName() { return getDisplayedTableName(); }
-
-    @Override
+    
     protected void buildAboveListPanel() {
         initAboveListPanel();
                 
@@ -273,8 +212,7 @@ class CropPlanList extends CPSMasterView implements ActionListener,
         // false ==> do not initialize panel
         super.buildAboveListPanel(false);
     }
-
-    @Override
+    
     protected void buildListPanel() {
        super.buildListPanel();
        
@@ -302,9 +240,9 @@ class CropPlanList extends CPSMasterView implements ActionListener,
         cmbxLimit.setMaximumRowCount(15);
         cmbxLimit.addItem( LIMIT_ALL );
         cmbxLimit.addItem( LIMIT_ALL_UNP );
-//        cmbxLimit.addItem( LIMIT_THIS_WEEK );
-//        cmbxLimit.addItem( LIMIT_NEXT_WEEK );
-//        cmbxLimit.addItem( LIMIT_THIS_NEXT );
+        cmbxLimit.addItem( LIMIT_THIS_WEEK );
+        cmbxLimit.addItem( LIMIT_NEXT_WEEK );
+        cmbxLimit.addItem( LIMIT_THIS_NEXT );
         cmbxLimit.addItem( LIMIT_DS );
         cmbxLimit.addItem( LIMIT_DS_UNP );
         cmbxLimit.addItem( LIMIT_TP );
@@ -325,11 +263,10 @@ class CropPlanList extends CPSMasterView implements ActionListener,
 
     @Override
     protected void updateFilter() {
-//       removeFilter( plantingFilter );
-//       plantingFilter = dlgFilter.getFilter();
-//       addFilter( plantingFilter );
-       super.updateFilter();
+        filter = dlgFilter.getFilter();
+        super.updateFilter();
     }
+    
     
     public class CropPlanBoxActionListener implements ActionListener {
       public void actionPerformed( ActionEvent actionEvent ) {
@@ -392,16 +329,16 @@ class CropPlanList extends CPSMasterView implements ActionListener,
     }
     
    @Override
-   protected List<String> getDisplayableColumnList() {
+   protected ArrayList<String> getDisplayableColumnList() {
       return getDataSource().getPlantingDisplayablePropertyNames();
    }
    
    @Override
-   protected List<Integer> getDefaultDisplayableColumnList() {
+   protected ArrayList<Integer> getDefaultDisplayableColumnList() {
       return getDataSource().getPlantingDefaultProperties();
    }
    
-   protected List<String[]> getColumnPrettyNameMap() {
+   protected ArrayList<String[]> getColumnPrettyNameMap() {
        return getDataSource().getPlantingPrettyNames();
    }
 
@@ -409,31 +346,33 @@ class CropPlanList extends CPSMasterView implements ActionListener,
     protected String getTableStatisticsString() {
         if ( ! isDataAvailable() || getSelectedPlanName() == null )
             return "";
-
+        
+       CPSPlanting p = getDataSource().getSumsForCropPlan( getSelectedPlanName(),
+                                                           (CPSComplexPlantingFilter) getFilter() );
        String s = "";
        
-       if ( summaryPlantings != null && summaryPlantings.getValue() > 0 ) {
-           s += "Plantings:" + summaryPlantings.getValue();
+       if ( masterTable.getRowCount() > 0 ) {
+           s += "Plantings:" + masterTable.getRowCount();
        
-           String t = summaryBeds.getValue().toString();
+           String t = p.getBedsToPlantString();
            if ( ! t.equals("") ) 
                s += "/Beds:" + t;
            
-           t = summaryRowFt.getValue().toString();
+           t = p.getRowFtToPlantString();
            if ( ! t.equals("") ) 
                s += "/RowFeet:" + t;
            
 //       s += "/Plants:" + p.getPlantsNeededString();
            
-           t = summaryFlats.getValue().toString();
+           t = p.getFlatsNeededString();
            if ( ! t.equals("") )
                s += "/Flats:" + t;
            
-//           t = p.getTotalYieldString();
-//           if ( ! t.equals("") )
-//               s += "/Yield:" + t;
+           t = p.getTotalYieldString();
+           if ( ! t.equals("") )
+               s += "/Yield:" + t;
        }
-
+       
        return s;
     }
     
@@ -453,7 +392,7 @@ class CropPlanList extends CPSMasterView implements ActionListener,
         updateSelectedPlanLabel();
         
         if ( getSelectedPlanName() == null ) {
-            setStatus( CPSMasterView.STATUS_NO_PLAN_SELECTED );
+            setStatus( "No plan selected.  Select a plan to display or use \"New Plan\" button to create a new one." );
         }
         else {
             updateListOfFieldNames();
@@ -475,34 +414,33 @@ class CropPlanList extends CPSMasterView implements ActionListener,
             CPSModule.debug( "CropPlanList", "view limit combobox changed to: " + cmbxLimit.getSelectedItem() );
             String s = (String) cmbxLimit.getSelectedItem();
             if      ( s.equalsIgnoreCase( LIMIT_ALL_UNP ))
-               plantingFilter.setAsAllNotPlantedFilter();
+                dlgFilter.setFilter( CPSComplexPlantingFilter.allNotPlantedFilter() );
             else if ( s.equalsIgnoreCase( LIMIT_THIS_WEEK ))
-               plantingFilter.setAsThisWeekFilter();
+               dlgFilter.setFilter( CPSComplexPlantingFilter.thisWeekFilter() );
             else if ( s.equalsIgnoreCase( LIMIT_NEXT_WEEK ))
-               plantingFilter.setAsNextWeekFilter();
+               dlgFilter.setFilter( CPSComplexPlantingFilter.nextWeekFilter() );
             else if ( s.equalsIgnoreCase( LIMIT_THIS_NEXT ))
-               plantingFilter.setAsThisAndNextWeekFilter();
+               dlgFilter.setFilter( CPSComplexPlantingFilter.thisAndNextWeekFilter() );
             else if ( s.equalsIgnoreCase( LIMIT_DS ))
-               plantingFilter.setAsDirectSeededFilter();
+                dlgFilter.setFilter( CPSComplexPlantingFilter.directSeededFilter() );
             else if ( s.equalsIgnoreCase( LIMIT_DS_UNP ))
-               plantingFilter.setAsDSNotPlantedFilter();
+                dlgFilter.setFilter( CPSComplexPlantingFilter.DSNotPlantedFilter() );
             else if ( s.equalsIgnoreCase( LIMIT_TP ))
-               plantingFilter.setAsTransplatedFilter();
+                dlgFilter.setFilter( CPSComplexPlantingFilter.transplantedFilter() );
             else if ( s.equalsIgnoreCase( LIMIT_TP_NOT_S  ))
-               plantingFilter.setAsTPNotSeededFilter();
+                dlgFilter.setFilter( CPSComplexPlantingFilter.TPNotSeededFilter() );
             else if ( s.equalsIgnoreCase( LIMIT_TP_NOT_P  ))
-               plantingFilter.setAsTPSeededNotPlantedFilter();
-            else {
-               plantingFilter.reset();
-               if ( s.equalsIgnoreCase( LIMIT_ALL ))
-                  plantingFilter.changed();
-            }
+                dlgFilter.setFilter( CPSComplexPlantingFilter.TPSeededNotPlantedFilter() );
+//            else if ( s.equalsIgnoreCase( LIMIT_CUSTOM ))
+                 // ignore this; just let the action listener handle it
+//                dlgFilter.setVisible( true );
+            else // if ( s.equalsIgnoreCase( LIMIT_ALL ))
+                dlgFilter.resetFilter();
             updateFilter();
         }
     }
     
     
-   @Override
     public void actionPerformed(ActionEvent actionEvent) {
         String action = actionEvent.getActionCommand();
 
@@ -513,17 +451,19 @@ class CropPlanList extends CPSMasterView implements ActionListener,
                 CPSModule.debug( "CropPlanList", "ERROR: cannot create new plan, no data available" );
                 return;
             }
+//            createNewCropPlan( getSelectedPlanName() );
             String s = planMan.getSelectedPlanName();
             planMan.setVisible(true);
+//            if ( ! s.equalsIgnoreCase( planMan.getSelectedPlanName() ) ) {
+//               lblPlanName.setText( "Plan Name: " + planMan.getSelectedPlanName() );
                dataUpdated();
+//       }
         }
        else if ( actionEvent.getSource() == cmbxLimit &&
                 ((String) cmbxLimit.getSelectedItem()).equalsIgnoreCase( LIMIT_CUSTOM ) ) {
            dlgFilter.setVisible( true );
-           // dialog is modal, wait for it to return
-           if ( dlgFilter.getFilter().isViewLimited() ) {
-               dlgFilter.updateFilter( plantingFilter );
-           }
+           if ( dlgFilter.getFilter().isViewLimited() )
+               updateFilter();
            else
                cmbxLimit.setSelectedItem( LIMIT_ALL );
        }
@@ -531,12 +471,6 @@ class CropPlanList extends CPSMasterView implements ActionListener,
             super.actionPerformed( actionEvent );    
         
     }
-
-   // for addPropertyChangeListener
-   public void propertyChange( PropertyChangeEvent evt ) {
-      updateStatisticsLabel();
-   }
-
-
-   
+    
+    
 }

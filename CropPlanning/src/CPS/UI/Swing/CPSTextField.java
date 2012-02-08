@@ -25,7 +25,6 @@ package CPS.UI.Swing;
 import CPS.Data.CPSDatum.CPSDatumState;
 import CPS.UI.Swing.autocomplete.AutoCompleteDecorator;
 import java.util.ArrayList;
-import java.util.List;
 import javax.swing.JTextField;
 
 /**
@@ -51,7 +50,7 @@ public class CPSTextField extends JTextField implements CPSTextComponent {
      * @param autocompleteList list of values to match the autocompletion against
      * @param strictMatch if true only match values in the list, otherwise allow maverick input
      */
-    public CPSTextField( int size, List autocompleteList, boolean strictMatch ) {
+    public CPSTextField( int size, ArrayList autocompleteList, boolean strictMatch ) {
        super(size);
        updateAutocompletionList( autocompleteList, strictMatch );
     }
@@ -66,7 +65,7 @@ public class CPSTextField extends JTextField implements CPSTextComponent {
      * @return true is matching string, false otherwise.
      */
     public boolean isMatchingStrict() { return strictMatch; }
-    public void updateAutocompletionList( List autocompleteList, boolean strictMatch ) {
+    public void updateAutocompletionList( ArrayList autocompleteList, boolean strictMatch ) {
        this.strictMatch = strictMatch;
        String s = this.getText();
        AutoCompleteDecorator.decorate( this, autocompleteList, this.strictMatch );

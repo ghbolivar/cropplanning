@@ -23,7 +23,6 @@
 package CPS.Core.TODOLists;
 
 import CPS.Data.CPSComplexPlantingFilter;
-import CPS.Data.CPSPlanting;
 import CPS.Module.CPSDataModel;
 import CPS.Module.CPSDataModelConstants;
 import CPS.Module.CPSDisplayableDataUserModule;
@@ -31,8 +30,6 @@ import CPS.Module.CPSGlobalSettings;
 import CPS.UI.Swing.CPSComplexFilterDialog;
 import CPS.UI.Swing.CPSTable;
 import CPS.UI.Swing.LayoutAssist;
-import ca.odell.glazedlists.BasicEventList;
-import ca.odell.glazedlists.swing.EventTableModel;
 import com.toedter.calendar.JDateChooser;
 import java.awt.Dimension;
 import java.awt.GridBagLayout;
@@ -49,15 +46,16 @@ import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.GregorianCalendar;
-import java.util.List;
 import javax.swing.BorderFactory;
 import javax.swing.ButtonGroup;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JRadioButton;
+import CPS.CSV.CSV;
 
 public class TODOLists extends CPSDisplayableDataUserModule implements ActionListener, ItemListener, PropertyChangeListener {
 
@@ -66,12 +64,14 @@ public class TODOLists extends CPSDisplayableDataUserModule implements ActionLis
     private JRadioButton rdoDateThisWeek,  rdoDateNextWeek,  rdoDateThisNextWeek,  rdoDateOther;
     private JDateChooser dtcDateOtherStart,  dtcDateOtherEnd;
     private JRadioButton rdoUncompThisWeek,  rdoUncompLastWeek,  rdoUncompAll;
+    private JRadioButton rdoPDF, rdoCVS;
 //    private File outputFile;
     private JLabel lblDirectory;
 //    private JTextField fldFile;
     private JFileChooser filFile;
     private JButton btnSelectFile,  btnPlantList,  btnGHList;
     private JButton btnAllPlantings;
+    private JButton btnPlanSummary;
     private GregorianCalendar tempCal;
     CPSComplexFilterDialog cfd = new CPSComplexFilterDialog();
     PDFExporter exporter = new PDFExporter();
@@ -79,7 +79,7 @@ public class TODOLists extends CPSDisplayableDataUserModule implements ActionLis
     public TODOLists() {
         setModuleName("TODOLists");
         setModuleType("Core");
-        setModuleVersion( CPSGlobalSettings.getVersion() );
+        setModuleVersion(GLOBAL_DEVEL_VERSION);
 
         tempCal = new GregorianCalendar();
     }
@@ -138,6 +138,14 @@ public class TODOLists extends CPSDisplayableDataUserModule implements ActionLis
         bg2.add(rdoUncompLastWeek);
         bg2.add(rdoUncompAll);
 
+        rdoPDF = new JRadioButton( "PDF", true );
+        rdoCVS = new JRadioButton( "CVS", false );
+        rdoPDF.addItemListener( this );
+        rdoCVS.addItemListener( this );
+        ButtonGroup bg3 = new ButtonGroup();
+        bg3.add( rdoPDF );
+        bg3.add( rdoCVS );
+
         // display label, default filename and button to select new file
 //        outputFile = new File( System.getProperty( "user.dir") );
 //        fldFile = new JTextField( 20 );
@@ -148,11 +156,11 @@ public class TODOLists extends CPSDisplayableDataUserModule implements ActionLis
         filFile.setMultiSelectionEnabled(false);
         filFile.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
         if ( filFile == null ) {
-            lblDirectory = new JLabel("<html><em>Hmm, problem displaying directory name. (Error 701)</em></html>");
+            lblDirectory = new JLabel("<html><i>Hmm, problem displaying directory name. (Error 701)</i></html>");
             debug( "Encountered null JFileChooser, ERROR 701" );
         }
         else if ( filFile.getSelectedFile() == null ) {
-            lblDirectory = new JLabel("<html><em>Hmm, problem displaying directory name. (Error 702)</em></html>");
+            lblDirectory = new JLabel("<html><i>Hmm, problem displaying directory name. (Error 702)</i></html>");
             debug( "JFileChooser returned a null selected file, ERROR 702" );
         }
         else if ( filFile.getSelectedFile().getPath() == null ) {
@@ -168,9 +176,11 @@ public class TODOLists extends CPSDisplayableDataUserModule implements ActionLis
         btnGHList = new JButton("GH Seeding List");
         btnPlantList = new JButton("Field Planting List");
         btnAllPlantings = new JButton( "List of All Plantings" );
+        btnPlanSummary = new JButton( "Crop Plan Summary" );
         btnGHList.addActionListener(this);
         btnPlantList.addActionListener(this);
         btnAllPlantings.addActionListener(this);
+        btnPlanSummary.addActionListener(this);
 
 
         LayoutAssist.addLabelLeftAlign(jplTodo, 0, 0, 4, 1, new JLabel("Create list from crop plan:"));
@@ -184,20 +194,25 @@ public class TODOLists extends CPSDisplayableDataUserModule implements ActionLis
         LayoutAssist.addSubPanel(jplTodo, 2, 6, 1, 1, dtcDateOtherStart);
         LayoutAssist.addSubPanel(jplTodo, 3, 6, 1, 1, dtcDateOtherEnd);
 
-        LayoutAssist.addLabelLeftAlign(jplTodo, 0, 7, new JLabel("Include:"));
-        LayoutAssist.addLabelLeftAlign(jplTodo, 1, 8, 2, 1, new JLabel("Uncompleted plantings from:"));
-        LayoutAssist.addButton(jplTodo, 2, 9, rdoUncompThisWeek);
-        LayoutAssist.addButton(jplTodo, 2, 10, rdoUncompLastWeek);
-        LayoutAssist.addButton(jplTodo, 2, 11, rdoUncompAll);
+        LayoutAssist.addLabelLeftAlign( jplTodo, 0, 7, 4, 1, new JLabel("Include uncompleted plantings from:"));
+//        LayoutAssist.addLabelLeftAlign( jplTodo, 1, 8, 2, 1, new JLabel("Uncompleted plantings from:"));
+        LayoutAssist.addButton(         jplTodo, 1, 8, rdoUncompThisWeek);
+        LayoutAssist.addButton(         jplTodo, 1, 9, rdoUncompLastWeek);
+        LayoutAssist.addButton(         jplTodo, 1, 10, rdoUncompAll);
 
-        LayoutAssist.addLabelLeftAlign(jplTodo, 0, 12, 4, 1, new JLabel("Export files to directory/folder:"));
-        LayoutAssist.addLabelLeftAlign(jplTodo, 1, 13, 3, 1, lblDirectory);
-        LayoutAssist.addButton(jplTodo, 1, 14, btnSelectFile);
+        LayoutAssist.addLabelLeftAlign( jplTodo, 0, 11, new JLabel( "Export as:" ));
+        LayoutAssist.addButton(         jplTodo, 1, 11, rdoPDF );
+        LayoutAssist.addButton(         jplTodo, 1, 12, rdoCVS );
 
-        LayoutAssist.addLabelLeftAlign(jplTodo, 0, 15, new JLabel("Export:"));
-        LayoutAssist.addButton(jplTodo, 1, 16, btnGHList);
-        LayoutAssist.addButton(jplTodo, 1, 17, btnPlantList);
-        LayoutAssist.addButton(jplTodo, 1, 18, btnAllPlantings);
+        LayoutAssist.addLabelLeftAlign( jplTodo, 0, 13, 4, 1, new JLabel("Export files to directory/folder:"));
+        LayoutAssist.addLabelLeftAlign( jplTodo, 1, 14, 3, 1, lblDirectory);
+        LayoutAssist.addButton(         jplTodo, 1, 15, btnSelectFile);
+
+        LayoutAssist.addLabelLeftAlign( jplTodo, 0, 16, new JLabel("Export:"));
+        LayoutAssist.addButton(         jplTodo, 1, 17, btnGHList);
+        LayoutAssist.addButton(         jplTodo, 1, 18, btnPlantList);
+        LayoutAssist.addButton(         jplTodo, 1, 19, btnAllPlantings);
+        LayoutAssist.addButton(         jplTodo, 1, 20, btnPlanSummary);
 
     }
 
@@ -206,7 +221,7 @@ public class TODOLists extends CPSDisplayableDataUserModule implements ActionLis
             return;
         }
 
-        List<String> l = getDataSource().getListOfCropPlans();
+        ArrayList<String> l = getDataSource().getListOfCropPlans();
         cmbPlanName.removeAllItems();
         for (String s : l) {
             // TODO think about this; possibly remove COMMON_PLANTINGS from list returned by
@@ -228,8 +243,16 @@ public class TODOLists extends CPSDisplayableDataUserModule implements ActionLis
     }
 
     private String createOutputFileName(File dir, String prefix, Date d) {
-        return dir.getAbsolutePath() + File.separator +
-                prefix + " - " + new SimpleDateFormat("MMM dd yyyy").format(d) + ".pdf";
+        String filename =
+                dir.getAbsolutePath() + File.separator +
+                prefix + " - " + new SimpleDateFormat("MMM dd yyyy").format(d);
+        
+        if ( rdoPDF.isSelected() ) 
+           filename += ".pdf";
+        else
+           filename += ".csv";
+
+        return filename;
     }
 
     private void exportGHPlantings(String planName) {
@@ -284,11 +307,8 @@ public class TODOLists extends CPSDisplayableDataUserModule implements ActionLis
 
 
         CPSTable jt = new CPSTable();
-//        jt.setModel(getDataSource().getCropPlan(planName, props, sortProp, filter));
-        BasicEventList<CPSPlanting> data = new BasicEventList<CPSPlanting>();
-        data.addAll( getDataSource().getCropPlan( planName ));
-        jt.setModel( new EventTableModel<CPSPlanting>( data, new GHSeedingTableFormat() ));
-//        jt.setColumnNamesAndToolTips(getDataSource().getPlantingShortNames());
+        jt.setModel(getDataSource().getCropPlan(planName, props, sortProp, filter));
+        jt.setColumnNamesAndToolTips(getDataSource().getPlantingShortNames());
 //        jt.setColumnNamesAndToolTips( getDataSource().getPlantingPrettyNames() );
 
         exporter.export(jt, filename,
@@ -354,12 +374,8 @@ public class TODOLists extends CPSDisplayableDataUserModule implements ActionLis
 
 
         CPSTable jt = new CPSTable();
-//        jt.setModel(getDataSource().getCropPlan(planName, props, sortProp, filter));
-        BasicEventList<CPSPlanting> data = new BasicEventList<CPSPlanting>();
-        data.addAll( getDataSource().getCropPlan( planName ));
-        jt.setModel( new EventTableModel<CPSPlanting>( data, new DSFieldPlantingTableFormat() ));
-
-//        jt.setColumnNamesAndToolTips(getDataSource().getPlantingShortNames());
+        jt.setModel(getDataSource().getCropPlan(planName, props, sortProp, filter));
+        jt.setColumnNamesAndToolTips(getDataSource().getPlantingShortNames());
 //        jt.setColumnNamesAndToolTips( getDataSource().getPlantingPrettyNames() );
 
         exporter.startExport(jt, filename,
@@ -419,14 +435,9 @@ public class TODOLists extends CPSDisplayableDataUserModule implements ActionLis
         }
 
 
-//        jt.setModel(getDataSource().getCropPlan(planName, props, sortProp, filter));
-//        jt.setColumnNamesAndToolTips(getDataSource().getPlantingShortNames());
+        jt.setModel(getDataSource().getCropPlan(planName, props, sortProp, filter));
+        jt.setColumnNamesAndToolTips(getDataSource().getPlantingShortNames());
 //        jt.setColumnNamesAndToolTips( getDataSource().getPlantingPrettyNames() );
-
-        data.clear();
-        data.addAll( getDataSource().getCropPlan( planName ));
-        jt.setModel( new EventTableModel<CPSPlanting>( data, new TPFieldPlantingTableFormat() ));
-
 
         exporter.addPage(jt, "Transplanted Field Plantings");
         exporter.endExport();
@@ -463,14 +474,9 @@ public class TODOLists extends CPSDisplayableDataUserModule implements ActionLis
         filter.setViewLimited(false);
 
         CPSTable jt = new CPSTable();
-//        jt.setModel(getDataSource().getCropPlan(planName, props, sortProp, filter));
-//        jt.setColumnNamesAndToolTips(getDataSource().getPlantingShortNames());
+        jt.setModel(getDataSource().getCropPlan(planName, props, sortProp, filter));
+        jt.setColumnNamesAndToolTips(getDataSource().getPlantingShortNames());
 //        jt.setColumnNamesAndToolTips( getDataSource().getPlantingPrettyNames() );
-
-        BasicEventList<CPSPlanting> data = new BasicEventList<CPSPlanting>();
-        data.addAll( getDataSource().getCropPlan( planName ));
-        jt.setModel( new EventTableModel<CPSPlanting>( data, new AllPlantingsTableFormat() ));
-
 
         exporter.export( jt, filename,
                          CPSGlobalSettings.getFarmName(),
@@ -478,6 +484,29 @@ public class TODOLists extends CPSDisplayableDataUserModule implements ActionLis
                          "All Plantings" );
 
     }
+
+
+    private void exportPlanSummary( String planName ) {
+
+        String filename = createOutputFileName( filFile.getSelectedFile(), planName + " Summary" );
+
+        CPSTable jt = new CPSTable();
+
+        // the "true" mean just include completed plantings
+        // "false" would include all planned plantings
+        jt.setModel( getDataSource().getPlanSummary( planName, false ) );
+        jt.setColumnNamesAndToolTips( getDataSource().getPlantingPrettyNames() );
+
+        if ( rdoPDF.isSelected() )
+           exporter.export( jt, filename,
+                            CPSGlobalSettings.getFarmName(),
+                            "Summary for plan \"" + planName + "\"",
+                            "Crop Plan Summary" );
+        else
+           new CSV().exportJTable( filename, "Summary of plantings from plan \"" + planName + "\"", jt );
+
+    }
+
 
     @Override
     public void dataUpdated() {
@@ -507,6 +536,8 @@ public class TODOLists extends CPSDisplayableDataUserModule implements ActionLis
             exportGHPlantings(planName);
         } else if ( action.equalsIgnoreCase( btnAllPlantings.getText() )) {
             exportAllPlantings(planName);
+        } else if ( action.equalsIgnoreCase( btnPlanSummary.getText() )) {
+            exportPlanSummary(planName);
         } else if (action.equalsIgnoreCase(btnSelectFile.getText())) {
             int status = filFile.showDialog(jplTodo, "Accept");
             if (status == JFileChooser.APPROVE_OPTION) {

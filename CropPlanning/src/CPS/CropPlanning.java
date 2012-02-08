@@ -31,6 +31,7 @@ import java.util.*;
 public class CropPlanning implements Runnable {
 
    private ModuleManager mm;
+   public static final String CPS_CORE_VERSION = CPSModule.GLOBAL_DEVEL_VERSION;
    
     public static void main(String[] args) {
 
@@ -39,15 +40,7 @@ public class CropPlanning implements Runnable {
        String buildnum = "";
        try {
            in = CropPlanning.class.getClass().getResourceAsStream( "/appinfo.properties" );
-           
-           if ( in == null ) {
-               System.err.println( "Uh Oh!  appinfo.properties NOT FOUND!  You should copy it into CropPlanning/trunk/build/classes" );
-               System.exit( -1 );
-           }
-
            props.load( in );
-
-           CPSGlobalSettings.setVersion( props.getProperty( "program.VERSION" ) );
 
            buildnum +=
                    props.getProperty( "program.VERSION") + "-" +
@@ -67,7 +60,7 @@ public class CropPlanning implements Runnable {
           if ( s.equalsIgnoreCase( "-firstTime" ) )
              CPSGlobalSettings.setFirstTimeRun( true );
           if ( s.equalsIgnoreCase( "-version" ) || s.equalsIgnoreCase( "-versionsimple" )) {
-             System.out.println( CPSGlobalSettings.getVersion() );
+             System.out.println( CPSModule.GLOBAL_DEVEL_VERSION );
              System.exit(0);
           }
           if ( s.equalsIgnoreCase( "-versionraw" )) {
@@ -139,7 +132,7 @@ public class CropPlanning implements Runnable {
        
        Runtime.getRuntime().addShutdownHook( new Thread(this) );
                    
-       globSet.setLastVersionUsed( CPSModule.versionAsLongInt( globSet.getVersion() ) );
+       globSet.setLastVersionUsed( CPSModule.versionAsLongInt( CPS_CORE_VERSION ) );
        
        ui.showUI();
        

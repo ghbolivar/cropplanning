@@ -25,10 +25,8 @@ package CPS.Core.DB;
 import CPS.Module.CPSModule;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import net.sf.persist.Persist;
 
 
 public class HSQLConnect {
@@ -48,17 +46,10 @@ public class HSQLConnect {
       CPSModule.debug("HSQLConnect", "Loading db from file: " + buildDBConnectionString( dir, dbFilename ) );
       return establishConnection( buildDBConnectionString( dir, dbFilename ));
    }
-
-   /**
-    * Connect to a new database, creating it in the process.
-    *
-    * @param dir Directory to locate the db file.
-    * @param dbFilename Name of the db.
-    * @param currentVersion Current software version to be inserted into the db as the "last run" version.
-    * @return a Persist object connected to the new db.
-    */
-   public static Persist createDB( String dir, String dbFilename, long currentVersion ) throws Exception {
-      return connectToNew( buildDBConnectionString( dir, dbFilename ), currentVersion );
+   
+   public static Connection createDB( String dir, String dbFilename, long currentVersion ) {
+      Connection con = connectToNew( buildDBConnectionString( dir, dbFilename ), currentVersion );
+      return con;
    }
 
    /** 
@@ -78,37 +69,18 @@ public class HSQLConnect {
     * @return true if the table exists, false if it does not.
     */
    public static boolean tableExists( Connection con, String tableName ) {
-
-      if ( tableName == null )
-         return false;
-      
+    
       try {
          Statement st = con.createStatement();
     
 //         String query = "select * from  " + tableName + " where 1=0";
-//         String query = "SELECT count(*) FROM  " + HSQLDB.escapeTableName( tableName );
-         String query = "SELECT count(*) FROM INFORMATION_SCHEMA.SYSTEM_TABLES WHERE table_name = " +
-                        HSQLDB.escapeTableName( tableName, HSQLDB.ESCAPE_WITH_SINGLE_QUOTES );
-
+         String query = "SELECT count(*) FROM  " + HSQLDB.escapeTableName( tableName );
+         st = con.createStatement();
          st.executeQuery( query );
-
-          ResultSet rs = st.executeQuery( query );
-          rs.next();
-
-          // return TRUE if the ResultSet says there's a single result, otherwise return FALSE
-          if ( rs.getInt( 1 ) == 1 ) {
-              HSQLDB.debug( "HSQLConnect", "checking existence of db table [" + tableName + "]: table exists");
-              return true;
-          }
-          else {
-              HSQLDB.debug( "HSQLConnect", "checking existence of db table [" + tableName + "]: table DOES NOT exist");
-              return false;
-          }
+         return true;
       }
       catch ( Exception ignore ) {
          // table does not exist or some other problem
-          HSQLDB.debug( "HSQLConnect", "checking existence of db table [" + tableName + "]: caught exception" );
-          ignore.printStackTrace();
          return false;
       }
     
@@ -155,20 +127,14 @@ public class HSQLConnect {
       }
       catch ( SQLException ex ) {
          int status = ex.getErrorCode();
-
+         // if connect fails for reason other than DATABASE_NOT_EXISTS
+         if ( status != ( -1 * org.hsqldb.Trace.DATABASE_NOT_EXISTS )) {
             System.out.println( "Caught error: " + ex.getSQLState() +
                                 " (code: " + status + ") while connecting to " +
                                 db );
-         // in reality, most errors will just be DNE
-         // if connect fails for reason other than DATABASE_NOT_EXISTS
-//         if ( status != ( -1 * org.hsqldb.error.ErrorCode.DATABASE_NOT_EXISTS )) {
-////         if ( status != ( -1 * org.hsqldb.Trace.DATABASE_NOT_EXISTS )) {
-//            System.out.println( "Caught error: " + ex.getSQLState() +
-//                                " (code: " + status + ") while connecting to " +
-//                                db );
-//            ex.printStackTrace();
-//            // TODO exit gracefully, or perhaps prompt user?
-//         }
+            ex.printStackTrace();
+            // TODO exit gracefully, or perhaps prompt user?
+         }
          con = null;
       }
       
@@ -178,29 +144,17 @@ public class HSQLConnect {
    private static Connection connectToExisting( String db ) {
       return connectToDB( db + dbOpenOnly );
    }
-
-   /**
-    * Connect to a database and create all of the default tables.
-    *
-    * @param db Connection string.  This should specify a <i>new</i> db.
-    * @param currentVersion Current version of the software which will be inserted in the new db metadata.
-    * @return a Persist object connected to the new db.
-    */
-   private static Persist connectToNew( String db, long currentVersion ) throws Exception {
-
-       HSQLDB.debug( "HSQLConnect", "creating a new db");
-
+   
+   private static Connection connectToNew( String db, long currentVersion ) {
       Connection con = connectToDB( db );
       
       if ( con == null ) // error occured
-         throw new Exception( "Error connecting to new database!" );
-
-      Persist p = new Persist( con );
-
-      HSQLDBCreator.createTables( p, currentVersion );
+         return con;
+      
+      HSQLDBCreator.createTables( con, currentVersion );
 //      HSQLDBPopulator.populateTables( con );
       
-      return p;
+      return con;
    }
    
 }

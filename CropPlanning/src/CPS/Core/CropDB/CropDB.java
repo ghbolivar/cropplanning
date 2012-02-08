@@ -37,7 +37,7 @@ public class CropDB extends CPSMasterDetailModule implements CPSExportable, CPSI
        
        setModuleName( "CropDB" );
        setModuleType( "Core" );
-       setModuleVersion( CPSGlobalSettings.getVersion() );
+       setModuleVersion( GLOBAL_DEVEL_VERSION );
        
        initPrefs( CropDB.class );
        
@@ -60,7 +60,7 @@ public class CropDB extends CPSMasterDetailModule implements CPSExportable, CPSI
             String fileName = CPSGlobalSettings.getDocumentOutputDir() + 
                               System.getProperty( "file.separator" ) +
                               "ExportedCropsAndVars." + exp.getExportFileDefaultExtension();
-            exp.exportCropsAndVarieties( fileName, getDataSource().getCropAndVarietyList() );
+            exp.exportCropsAndVarieties( fileName, getDataSource().getCropsAndVarietiesAsList() );
         }
         else {
             System.err.println("ERROR(CropDB): No data exported, no data available.");

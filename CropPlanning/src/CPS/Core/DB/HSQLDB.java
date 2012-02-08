@@ -33,10 +33,8 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.List;
 import javax.swing.JPanel;
 import javax.swing.table.TableModel;
-import net.sf.persist.*;
 
 /**
  *
@@ -45,12 +43,8 @@ import net.sf.persist.*;
 public class HSQLDB extends CPSDataModelSQL implements CPSConfigurable {
    
     private static final boolean DEBUG = true;
-
-    protected static final String CROP_VAR_TABLE = "CROPS_VARIETIES";
-
-    protected static final boolean ESCAPE_WITH_SINGLE_QUOTES = true;
-    protected static final boolean ESCAPE_WITH_DOUBLE_QUOTES = false;
     
+   private Connection con = null;
    private String hsqlDriver = "org.hsqldb.jdbcDriver";
    private String dbDir = System.getProperty("user.dir");
    private String dbFile = "CPSdb";
@@ -62,7 +56,6 @@ public class HSQLDB extends CPSDataModelSQL implements CPSConfigurable {
    
    private HSQLColumnMap columnMap;
    private HSQLQuerier query;
-   private Persist p;
    
    HSQLSettings localSettings;
    
@@ -70,7 +63,7 @@ public class HSQLDB extends CPSDataModelSQL implements CPSConfigurable {
 
        setModuleName( "HSQLDB" );
        setModuleDescription( "A full featured DataModel based on HSQLDB.");
-       setModuleVersion( CPSGlobalSettings.getVersion() );
+       setModuleVersion( GLOBAL_DEVEL_VERSION );
                
        localSettings = new HSQLSettings();
        
@@ -80,106 +73,73 @@ public class HSQLDB extends CPSDataModelSQL implements CPSConfigurable {
    @Override
    public int init () {
 
-      // enable Persist logging
-//      org.apache.log4j.BasicConfigurator.configure();
-
       if ( true || localSettings.getUseGlobalDir() )
          dbDir = CPSGlobalSettings.getDataOutputDir();
       else
          dbDir = localSettings.getCustomOutDir();
 
-      debug( "attempting to connect to the db" );
-      Connection con = HSQLConnect.getConnection( dbDir, dbFile, hsqlDriver );
+      con = HSQLConnect.getConnection( dbDir, dbFile, hsqlDriver );
+      boolean newDB = false;
       
-      try {
-          // if the db DNE
-          if ( con == null ) {
-              debug( "connection failed, presumably the db DNE" );
-              p = HSQLConnect.createDB( dbDir, dbFile, getModuleVersionAsLongInt() );
-          }
-          else
-              p = new Persist( con );
-
-          /* only needed when we're using a server mode db */
-          if ( false && HSQLConnect.dbIsEmpty( con ) ) {
-              debug( "The db seems to be empty." );
-              HSQLDBCreator.createTables( p, getModuleVersionAsLongInt() );
-          }
-      } catch ( Exception e ) {
-          e.printStackTrace();
+      if ( con == null ) { // db DNE
+         con = HSQLConnect.createDB( dbDir, dbFile, getModuleVersionAsLongInt() );
+         newDB = true;
       }
-
-      // make sure Persist knows about our custom data types
-//      p.getClassToTypeNumMap().put( CPSBoolean.class, new Integer( java.sql.Types.BOOLEAN ));
-
-      HSQLUpdate.updateDB( p, getModuleVersionAsLongInt() );
-
-      // TODO Persist port HERE
-      query = new HSQLQuerier( p.getConnection() );
-      columnMap = new HSQLColumnMap();
+      /* only needed when we're using a server mode db */
+      else if ( HSQLConnect.dbIsEmpty( con ) ) {
+         HSQLDBCreator.createTables( con, getModuleVersionAsLongInt() );
+         newDB = true;
+      }
+         
+      HSQLUpdate.updateDB( con, getModuleVersionAsLongInt() );
       
+      query = new HSQLQuerier( con );
+      columnMap = new HSQLColumnMap();
+
+//      if ( false && newDB ) {
+//         this.importCropsAndVarieties( HSQLDBPopulator.loadDefaultCropList( dbDir )
+//                                                      .getCropsAndVarietiesAsList() );
+//      } 
+
       return 0;
    }
-
-   public synchronized List<String> getFlatSizeList( String planName ) {
-
-       // if the plan doesn't exist, then don't get the mapping, just return an empty list
-       if ( ! HSQLConnect.tableExists( p.getConnection(), planName ))
-           return new ArrayList<String>();
-       
-       TableMapping tm = (TableMapping) p.getMapping( CPSPlanting.class, planName );
-       String plantColName = tm.getColumnNameForMethod( "getFlatSize" );
-       tm = (TableMapping) p.getMapping( CPSCrop.class, CROP_VAR_TABLE );
-       String cropColName = tm.getColumnNameForMethod( "getFlatSize" );
-       return getDistinctValsFromCVAndPlan( planName, plantColName, cropColName );
+   
+   public synchronized ArrayList<String> getFlatSizeList( String planName ) {
+       return getDistinctValsFromCVAndPlan( planName, CPSDataModelConstants.PROP_FLAT_SIZE );
+//       return getDistinctValsFromCVAndPlan( planName, "flat_size" );
    }
-
-   public synchronized List<String> getFieldNameList( String planName ) {
-       // if the plan doesn't exist, then don't get the mapping, just return an empty list
-       if ( ! HSQLConnect.tableExists( p.getConnection(), planName ))
-           return new ArrayList<String>();
-
-       TableMapping tm = (TableMapping) p.getMapping( CPSPlanting.class, planName );
+   
+   public synchronized ArrayList<String> getFieldNameList( String planName ) {
        // TODO should this query all crop plans, or just one.  Just one for now.
-       return HSQLQuerier.getDistinctValuesForColumn( p.getConnection(),
-                                                      planName,
-                                                      tm.getColumnNameForMethod( "getLocation" ) );
+       return HSQLQuerier.getDistinctValuesForColumn( con, planName, propNameFromPropNum( CPSDataModelConstants.RECORD_TYPE_PLANTING,
+                                                                                          CPSDataModelConstants.PROP_LOCATION ));
+//       return HSQLQuerier.getDistinctValuesForColumn( con, planName,  "location" );
    }
-
-   public synchronized List<String> getCropNameList() {
-       TableMapping tm = (TableMapping) p.getMapping( CPSCrop.class, CROP_VAR_TABLE );
-       return HSQLQuerier.getDistinctValuesForColumn( p.getConnection(),
-                                                      CROP_VAR_TABLE,
-                                                      tm.getColumnNameForMethod( "getCropName" ) );
+   
+   public synchronized ArrayList<String> getCropNameList() {
+      return HSQLQuerier.getDistinctValuesForColumn( con, "CROPS_VARIETIES", propNameFromPropNum( CPSDataModelConstants.RECORD_TYPE_CROP,
+                                                                                                  CPSDataModelConstants.PROP_CROP_NAME ));
+//      return HSQLQuerier.getDistinctValuesForColumn( con, "CROPS_VARIETIES", "crop_name" );
    }
-
-   public synchronized List<String> getVarietyNameList( String crop_name, String planName ) {
-
-       // if the plan doesn't exist, then don't get the mapping, just return an empty list
-       if ( ! HSQLConnect.tableExists( p.getConnection(), planName ))
-           return new ArrayList<String>();
-       
-       TableMapping tm = (TableMapping) p.getMapping( CPSPlanting.class, planName );
-       String plantColName = tm.getColumnNameForMethod( "getVarietyName" );
-       tm = (TableMapping) p.getMapping( CPSCrop.class, CROP_VAR_TABLE );
-       String cropColName = tm.getColumnNameForMethod( "getVarietyName" );
-       return getDistinctValsFromCVAndPlan( planName, plantColName, cropColName );
+   
+   public synchronized ArrayList<String> getVarietyNameList( String crop_name, String cropPlan ) {
+      return getDistinctValsFromCVAndPlan( cropPlan, CPSDataModelConstants.PROP_VAR_NAME );
+//      return getDistinctValsFromCVAndPlan( cropPlan, "var_name" );
    }
-
-   // TODO port to Persist
-   private synchronized List<String> getDistinctValsFromCVAndPlan( String planName, String planColName, String cropColName ) {
+   
+   private synchronized ArrayList<String> getDistinctValsFromCVAndPlan( String planName, int propNum ) {
        ArrayList<String> l = new ArrayList<String>();
        Set set = new HashSet();
        
        if ( planName != null )
-           l.addAll( HSQLQuerier.getDistinctValuesForColumn( p.getConnection(),
+           l.addAll( HSQLQuerier.getDistinctValuesForColumn( con,
                                                              planName,
-                                                             planColName ) );
-
-       l.addAll( HSQLQuerier.getDistinctValuesForColumn( p.getConnection(),
-                                                         CROP_VAR_TABLE,
-                                                         cropColName ) );
-
+                                                             propNameFromPropNum( CPSDataModelConstants.RECORD_TYPE_PLANTING,
+                                                                                  propNum ) ) );
+       l.addAll( HSQLQuerier.getDistinctValuesForColumn( con,
+                                                         "CROPS_VARIETIES",
+                                                         propNameFromPropNum( CPSDataModelConstants.RECORD_TYPE_CROP,
+                                                                              propNum ) ) );
        // list now contains all values, possibly some duplicates
        // this ensures that the values are unique
        set.addAll ( l  );
@@ -188,25 +148,36 @@ public class HSQLDB extends CPSDataModelSQL implements CPSConfigurable {
       
        return l;
        
+//       ArrayList<String> tables = new ArrayList<String>();
+//       if ( planName != null )
+//           tables.add( planName );
+//       tables.add( "CROPS_VARIETIES" );
+//       
+//       return HSQLQuerier.getDistinctValuesForColumn( con, tables, column );
+   
    }
-
-
-   public synchronized List<String> getFamilyNameList() {
-       TableMapping tm = (TableMapping) p.getMapping( CPSCrop.class, CROP_VAR_TABLE );
-       return HSQLQuerier.getDistinctValuesForColumn( p.getConnection(),
-                                                      CROP_VAR_TABLE,
-                                                      tm.getColumnNameForMethod( "getFamilyName" ));
+   
+   public synchronized ArrayList<String> getFamilyNameList() {
+      return HSQLQuerier.getDistinctValuesForColumn( con, "CROPS_VARIETIES", "fam_name" );
    }
-
-   // TODO port to Persist
-   public synchronized List<String> getListOfCropPlans() {
+   
+   public synchronized ArrayList<String> getListOfCropPlans() {
       
-       return HSQLQuerier.getDistinctValuesForColumn( p.getConnection(), "CROP_PLANS", "plan_name" );
+       return HSQLQuerier.getDistinctValuesForColumn( con, "CROP_PLANS", "plan_name" );
 
    }
    
    /* COLUMN NAMES */
-   private List<String> getCropVarFilterColumnNames() {
+
+   private String getMandatoryColumnNames() {
+      return "id, crop_name";
+   }
+   private String getAbbreviatedCropVarColumnNames( boolean varieties ) {
+      return listToCSVString( columnMap.getDefaultCropColumnList() );
+//       return getMandatoryColumnNames() + ", " +
+//             ( varieties ? "var_name, " : "" ) + "fam_name, maturity";
+   }
+   private ArrayList<String> getCropVarFilterColumnNames() {
       return columnMap.getCropFilterColumnNames();
 //       return getAbbreviatedCropVarColumnNames( true ) + ", keywords, groups";
    }
@@ -221,66 +192,66 @@ public class HSQLDB extends CPSDataModelSQL implements CPSConfigurable {
    }
    
    
-   private List<String> getCropColumnList() {
+   private ArrayList<String> getCropColumnList() {
        return columnMap.getCropColumns();
    }
 
-   public List<Integer> getCropDefaultProperties() {
+   public ArrayList<Integer> getCropDefaultProperties() {
       return columnMap.getDefaultCropPropertyList();
    }
 
-   public List<Integer> getCropDisplayableProperties() {
+   public ArrayList<Integer> getCropDisplayableProperties() {
       return columnMap.getCropPropertyList();
    }
    
-   public List<String> getCropDefaultPropertyNames() {
+   public ArrayList<String> getCropDefaultPropertyNames() {
       return columnMap.getDefaultCropColumnList();
    }
    
-   public List<String> getCropDisplayablePropertyNames() {
+   public ArrayList<String> getCropDisplayablePropertyNames() {
       return columnMap.getCropDisplayableColumns();
    }
-   public List<String[]> getCropPrettyNames() {
+   public ArrayList<String[]> getCropPrettyNames() {
       return columnMap.getCropPrettyNameMapping(); 
    }
    
-   private List<String[]> getCropInheritanceColumnMapping() {
+   private ArrayList<String[]> getCropInheritanceColumnMapping() {
        return columnMap.getCropInheritanceColumnMapping();
    }
    
-   private List<String[]> getPlantingCropColumnMapping() {
+   private ArrayList<String[]> getPlantingCropColumnMapping() {
       return columnMap.getPlantingToCropColumnMapping();
 //       return plantingCropColumnMapping;
    }
 
-   public List<Integer> getPlantingDefaultProperties() {
+   public ArrayList<Integer> getPlantingDefaultProperties() {
       return columnMap.getDefaultPlantingPropertyList();
    }
 
-   public List<Integer> getPlantingDisplayableProperties() {
+   public ArrayList<Integer> getPlantingDisplayableProperties() {
       return columnMap.getPlantingPropertyList();
    }
    
-   public List<String> getPlantingDefaultPropertyNames() {
+   public ArrayList<String> getPlantingDefaultPropertyNames() {
       return columnMap.getDefaultPlantingColumnList();
    }
    
-   public List<String> getPlantingDisplayablePropertyNames() {
+   public ArrayList<String> getPlantingDisplayablePropertyNames() {
       return columnMap.getPlantingDisplayableColumns();
    }
    
-   public List<String[]> getPlantingPrettyNames() {
+   public ArrayList<String[]> getPlantingPrettyNames() {
       return columnMap.getPlantingPrettyNameMapping(); 
    }
    
-   public List<String[]> getPlantingShortNames() {
+   public ArrayList<String[]> getPlantingShortNames() {
       return columnMap.getPlantingShortNameMapping(); 
    }
    
    private String getAbbreviatedCropPlanColumnNames() {
        return listToCSVString( columnMap.getDefaultPlantingColumnList() );
    }
-   private List<String> getCropPlanFilterColumnNames() {
+   private ArrayList<String> getCropPlanFilterColumnNames() {
        return columnMap.getPlantingFilterColumnNames();
    }
    
@@ -313,155 +284,248 @@ public class HSQLDB extends CPSDataModelSQL implements CPSConfigurable {
     * CROP LIST METHODS
     */
 
-   public List<CPSCrop> getCropList() {
-
-       TableMapping tm = (TableMapping) p.getMapping( CPSCrop.class, CROP_VAR_TABLE);
-       String selectSQL = tm.getSelectWhereSql() + tm.getColumnNameForMethod( "getVarietyName" ) + " is null";
-
-       return p.readList( CPSCrop.class, selectSQL );
-       
+   public TableModel getCropTable() { 
+      return getCropTable( null, null );
+   }
+   public TableModel getCropTable( String sortCol ) { 
+      return getCropTable( sortCol, null );
+   }   
+   public TableModel getCropTable( int sortProp ) { 
+      return getCropTable( sortColumnFromPropertyNum( CPSDataModelConstants.RECORD_TYPE_CROP, sortProp) );
+   }
+   public TableModel getCropTable( String sortCol, CPSComplexFilter filter ) { 
+      return getCropTable( getCropsColumnNames(), sortCol, filter );
+   }
+   public TableModel getCropTable( int sortProp, CPSComplexFilter filter ) { 
+      return getCropTable( sortColumnFromPropertyNum( CPSDataModelConstants.RECORD_TYPE_CROP, sortProp ), filter );
+   }
+   public TableModel getCropTable( String columns, String sortCol, CPSComplexFilter filter ) { 
+      return cachedListTableQuery( "CROPS_VARIETIES", includeMandatoryColumns(columns), "var_name IS NULL", sortCol,
+                                   buildGeneralFilterExpression( getCropVarFilterColumnNames(), filter ));
+   }
+   public TableModel getCropTable( ArrayList<Integer> properties , int sortProp, CPSComplexFilter filter ) { 
+      return getCropTable( propertyNumListToColumnString( CPSDataModelConstants.RECORD_TYPE_CROP, properties),
+                           sortColumnFromPropertyNum( CPSDataModelConstants.RECORD_TYPE_CROP, sortProp ),
+                           filter );
    }
    
-   public List<CPSCrop> getVarietyList() {
-       
-       TableMapping tm = (TableMapping) p.getMapping( CPSCrop.class, CROP_VAR_TABLE);
-       String selectSQL = tm.getSelectWhereSql() + tm.getColumnNameForMethod( "getVarietyName" ) + " is not null";
-
-       List<CPSCrop> vars = p.readList( CPSCrop.class, selectSQL );
-
-       for ( CPSCrop v : vars)
-          performInheritanceForCropVar( v );
-
-       return vars;
+   public TableModel getVarietyTable() {
+      return getVarietyTable( null, null );
    }
-
-   public List<CPSCrop> getCropAndVarietyList() {
-
-       List<CPSCrop> crops = p.readList( CROP_VAR_TABLE, CPSCrop.class );
-
-       for ( CPSCrop c : crops)
-          performInheritanceForCropVar( c );
-
-       return crops;
+   public TableModel getVarietyTable( String sortCol ) {
+      return getVarietyTable( sortCol, null );
    }
-
+   public TableModel getVarietyTable( int sortProp ) { 
+      return getVarietyTable( sortColumnFromPropertyNum( CPSDataModelConstants.RECORD_TYPE_CROP, sortProp ));
+   }
+   public TableModel getVarietyTable( String sortCol, CPSComplexFilter filter ) {
+       return getVarietyTable( getVarietiesColumnNames(), sortCol, filter );
+   }
+   public TableModel getVarietyTable( int sortProp, CPSComplexFilter filter ) { 
+      return getVarietyTable( sortColumnFromPropertyNum( CPSDataModelConstants.RECORD_TYPE_CROP, sortProp ), filter );
+   }
+   public TableModel getVarietyTable( String columns, String sortCol, CPSComplexFilter filter ) {
+      return cachedListTableQuery( "CROPS_VARIETIES", 
+                                   includeMandatoryColumns(columns),
+                                   "var_name IS NOT NULL", 
+                                   sortCol,
+                                   buildGeneralFilterExpression( getCropVarFilterColumnNames(), filter ));
+   }
+   public TableModel getVarietyTable( ArrayList<Integer> properties, int sortProp, CPSComplexFilter filter ) { 
+      return getVarietyTable( propertyNumListToColumnString( CPSDataModelConstants.RECORD_TYPE_CROP, properties),
+                              sortColumnFromPropertyNum( CPSDataModelConstants.RECORD_TYPE_CROP, sortProp ),
+                              filter );
+   }
+   
+   public TableModel getCropAndVarietyTable() {
+      return getCropAndVarietyTable( null, null );
+   }
+   public TableModel getCropAndVarietyTable( String sortCol ) {
+      return getCropAndVarietyTable( sortCol, null );
+   }
+   public TableModel getCropAndVarietyTable( int sortProp ) { 
+      return getCropAndVarietyTable( sortColumnFromPropertyNum( CPSDataModelConstants.RECORD_TYPE_CROP, sortProp ) );
+   }
+   public TableModel getCropAndVarietyTable( String sortCol, CPSComplexFilter filter ) {
+       return getCropAndVarietyTable( getCropsColumnNames(), sortCol, filter );
+   }
+   public TableModel getCropAndVarietyTable( int sortProp, CPSComplexFilter filter ) { 
+      return getCropAndVarietyTable( sortColumnFromPropertyNum( CPSDataModelConstants.RECORD_TYPE_CROP, sortProp ), filter );
+   }
+   public TableModel getCropAndVarietyTable( String columns, String sortCol, CPSComplexFilter filter ) {
+      return HSQLQuerier.tableResults( this, 
+                                       query.submitCalculatedCropAndVarQuery( getCropInheritanceColumnMapping(),
+                                                                              includeMandatoryColumns( columns ),
+                                                                              sortCol,
+                                                                              buildGeneralFilterExpression( getCropVarFilterColumnNames(),
+                                                                                                            filter ) ),
+                                       "CROPS_VARIETIES" );
+//      return cachedListTableQuery( "CROPS_VARIETIES", includeMandatoryColumns(columns), null, sortCol,
+//                                   buildGeneralFilterExpression( getCropVarFilterColumnNames(), filter ) );
+   }
+   public TableModel getCropAndVarietyTable( ArrayList<Integer> properties, int sortProp, CPSComplexFilter filter ) { 
+      return getCropAndVarietyTable( propertyNumListToColumnString( CPSDataModelConstants.RECORD_TYPE_CROP, properties),
+                                     sortColumnFromPropertyNum( CPSDataModelConstants.RECORD_TYPE_CROP, sortProp ),
+                                     filter );
+   }
+   
    /*
     * CROP PLAN METHODS
     */
    public void createCropPlan( String planName, int year, String desc ) {
-      HSQLDBCreator.createCropPlan( p, planName, year, desc );
+      HSQLDBCreator.createCropPlan( con, planName, year, desc );
       updateDataListeners();
    }
    
    public void updateCropPlan( String planName, int year, String desc ) {
-      HSQLDBCreator.updateCropPlan( p, planName, year, desc );
+      HSQLDBCreator.updateCropPlan( con, planName, year, desc );
       // TODO commented out because I can't imagine a time (yet) when 
       // we'll need to update when a plan changes metadata
       // updateDataListeners();
    }
    
    public void deleteCropPlan( String planName ) {
-      HSQLDBCreator.deleteCropPlan( p, planName );
+      HSQLDBCreator.deleteCropPlan( con, planName );
       updateDataListeners();
    }
    
    public int getCropPlanYear( String planName ) {
-      return HSQLQuerier.getCropPlanYear( p.getConnection(), planName );
+      return HSQLQuerier.getCropPlanYear( con, planName );
    }
    
    public String getCropPlanDescription( String planName ) {
-      return HSQLQuerier.getCropPlanDescription( p.getConnection(), planName );
+      return HSQLQuerier.getCropPlanDescription( con, planName );
    }
    
-   public List<CPSPlanting> getCropPlan(String plan_name) {
-
-      debug( "Retrieving crop plan: " + plan_name );
-      List<CPSPlanting> cropPlan = p.readList( plan_name, CPSPlanting.class );
-
-      for ( CPSPlanting planting : cropPlan ) {
-         performInheritanceForPlanting( planting );
-      }
-
-      return cropPlan;
+   public TableModel getCropPlan(String plan_name) {
+      return getCropPlan( plan_name, null, null );
+   }
+   
+   public TableModel getCropPlan( String plan_name, String sortCol ) {
+      return getCropPlan( plan_name, sortCol, null );
+   }
+   public TableModel getCropPlan( String plan_name, int sortProp ) {
+      return getCropPlan( plan_name, sortColumnFromPropertyNum( CPSDataModelConstants.RECORD_TYPE_PLANTING, sortProp ) );
    }
 
-   /**
-    * Returns the summation of certain data for a particular crop plan.  DEPRECATED after version .1.5 Beta1.
-    * @param plan_name Name of plan to sum on.
-    * @param filter Tilter to apply to the plan before summing happens.
-    * @return a CPSPlanting object whose columns are filled with the sums from the crop plan.
-    * @deprecated 
-    */
+   public TableModel getCropPlan( String plan_name, String sortCol, CPSComplexPlantingFilter filter ) {
+      return getCropPlan( plan_name, getAbbreviatedCropPlanColumnNames(), sortCol, filter );
+   }
+   public TableModel getCropPlan( String plan_name, int sortProp, CPSComplexPlantingFilter filter ) {
+      return getCropPlan( plan_name, 
+                          sortColumnFromPropertyNum( CPSDataModelConstants.RECORD_TYPE_PLANTING, sortProp ),
+                          filter );
+   }
+   
+   public TableModel getCropPlan( String plan_name, String columns, String sortCol, CPSComplexPlantingFilter filter ) {
+      return HSQLQuerier.tableResults( this, 
+              query.submitCalculatedCropPlanQuery( plan_name, 
+                                                   getPlantingCropColumnMapping(),
+                                                   getCropInheritanceColumnMapping(),
+                                                   includeMandatoryColumns(columns),
+                                                   sortCol,
+                                                   buildComplexFilterExpression( this.getCropPlanFilterColumnNames(),
+                                                                                 filter ) ),
+               plan_name );
+      
+   }
+   public TableModel getCropPlan( String plan_name, ArrayList<Integer> properties, int sortProp, CPSComplexPlantingFilter filter ) {
+      return getCropPlan( plan_name,
+                          propertyNumListToColumnString( CPSDataModelConstants.RECORD_TYPE_PLANTING, properties),
+                          sortColumnFromPropertyNum( CPSDataModelConstants.RECORD_TYPE_PLANTING, sortProp ),
+                          filter );
+   }
+
+      
    public CPSPlanting getSumsForCropPlan( String plan_name, CPSComplexPlantingFilter filter ) {
-
-       return new CPSPlanting();
-
-       // began porting this section of code to Persist but gave up because -- in theory --
-       // the sums and such will happen in the "Master" view modules, not in the db
-//       TableMapping tm = (TableMapping) p.getMapping( CPSCrop.class, CROP_VAR_TABLE );
-//
-//       final ArrayList<String> colsToSum = new ArrayList<String>( 6 );
-//       colsToSum.add( tm.getColumnNameForMethod( "getBedsToPlant" ));
-//       colsToSum.add( tm.getColumnNameForMethod( "getRowFtToPlant()" ));
-//       colsToSum.add( tm.getColumnNameForMethod( "getPlantsNeeded()" ));
-//       colsToSum.add( tm.getColumnNameForMethod( "getPlantsToStart()" ));
-//       colsToSum.add( tm.getColumnNameForMethod( "getFlatsNeeded()" ));
-//       colsToSum.add( tm.getColumnNameForMethod( "getTotalYield()" ));
-
-
-
-       // this is original code and has not been altered
-//       try {
-//           return resultSetAsPlanting( query.submitSummedCropPlanQuery( plan_name,
-//                                                                        getPlantingCropColumnMapping(),
-//                                                                        getCropInheritanceColumnMapping(),
-//                                                                        colsToSum,
-//                                                                        buildComplexFilterExpression( this.getCropPlanFilterColumnNames(),
-//                                                                                                      filter )));
-//       }
-//       catch ( SQLException e ) {
-//           e.printStackTrace();
-//           return new CPSPlanting();
-//       }
-   }
-   
-   
-   /* ***************************************************************** */
-   /* CROP AND VARIETY METHODS */
-   /* ***************************************************************** */
-
-   public CPSPlanting getCommonInfoForPlantings( String plan_name, List<Integer> plantingIDs ) {
-      
-       TableMapping tm = (TableMapping) p.getMapping( CPSPlanting.class, plan_name);
-         
-       CPSPlanting planting = p.read( CPSPlanting.class, query.buildCommonInfoQuery( plan_name, tm.getColumns(), plantingIDs ) );
-
-       planting.setCommonIDs( plantingIDs );
-       return planting;
-      
-   }
-   
-   public CPSCrop getCommonInfoForCrops( List<Integer> cropIDs ) {
-
-       TableMapping tm = (TableMapping) p.getMapping( CPSCrop.class, CROP_VAR_TABLE);
-
-       CPSCrop crop = p.read( CPSCrop.class, query.buildCommonInfoQuery( CROP_VAR_TABLE, tm.getColumns(), cropIDs ) );
-
-       crop.setCommonIDs( cropIDs );
-       return crop;
+       ArrayList<String> colsToSum = new ArrayList<String>( 4 );
+       colsToSum.add( "beds_to_plant" );
+       colsToSum.add( "rowft_to_plant" );
+       colsToSum.add( "plants_needed" );
+       colsToSum.add( "plants_to_start" );
+       colsToSum.add( "flats_needed" ); 
+       colsToSum.add( "total_yield" );
        
+       try {
+           return resultSetAsPlanting( query.submitSummedCropPlanQuery( plan_name,
+                                                                        getPlantingCropColumnMapping(),
+                                                                        getCropInheritanceColumnMapping(),
+                                                                        colsToSum,
+                                                                        buildComplexFilterExpression( this.getCropPlanFilterColumnNames(),
+                                                                                                      filter )));
+       }
+       catch ( SQLException e ) {
+           e.printStackTrace();
+           return new CPSPlanting();
+       }
+   }
+
+
+
+   public TableModel getPlanSummary( String plan_name ) {
+      return getPlanSummary( plan_name, false );
+   }
+
+   public TableModel getPlanSummary( String plan_name, boolean just_completed ) {
+
+      return HSQLQuerier.tableResults( this, query.getPlanSummary( plan_name,
+                                                                   getPlantingCropColumnMapping(),
+                                                                   getCropInheritanceColumnMapping(), just_completed ), plan_name );
+
+   }
+
+
+   
+   /*
+    * CROP AND VARIETY METHODS
+    */
+   
+   public CPSPlanting getCommonInfoForPlantings( String plan_name, ArrayList<Integer> plantingIDs ) {
+      try {
+         rsPlantCache = query.submitCommonInfoQuery( plan_name, columnMap.getPlantingColumns(), plantingIDs );
+         
+         CPSPlanting p = resultSetAsPlanting( rsPlantCache );
+         p.setCommonIDs( plantingIDs );
+         return p;
+      }
+      catch ( SQLException e ) {
+         e.printStackTrace();
+         return null;
+      }
    }
    
+   public CPSCrop getCommonInfoForCrops( ArrayList<Integer> cropIDs ) {
+      try {
+         ArrayList<String> columns = getCropColumnList();
+         rsCropCache = query.submitCommonInfoQuery( "CROPS_VARIETIES", columns, cropIDs );
+         
+         CPSCrop c = resultSetAsCrop( rsCropCache );
+         c.setCommonIDs( cropIDs );
+         return c;
+      }
+      catch ( SQLException e ) {
+         e.printStackTrace();
+         return null;
+      }
+   }
+   
+   /* we make the assumption that we're zero-based, ResultSets are not */
    public CPSCrop getCropInfo( int id ) {
-       CPSCrop c;
-       if ( id != -1 )
-           c = p.readByPrimaryKey( CROP_VAR_TABLE, CPSCrop.class, id );
-       else
-           c = new CPSCrop();
+      if ( id != -1 )
+         try {
+            // TODO figure out better way to handle result caching
+            // we could just make this a string based query (ie getCropInfoForRow
+            // disabling this makes it a simple query on an ID
+            if ( false && rsListCache != null ) {
+               rsListCache.absolute( id + 1 );
+               id = rsListCache.getInt( "id" );
+            }
+            rsCropCache = query.submitQuery( "CROPS_VARIETIES", "*", "id = " + id );
+            return resultSetAsCrop( rsCropCache );
+         }
+         catch ( SQLException e ) { e.printStackTrace(); }
 
-       performInheritanceForCropVar( c );
-
-       return c;
+      return new CPSCrop();
    }
    
    
@@ -469,45 +533,144 @@ public class HSQLDB extends CPSDataModelSQL implements CPSConfigurable {
       
       if ( cropName == null || cropName.equalsIgnoreCase("null") || cropName.equals("") )
          return new CPSCrop();
-
-      TableMapping tm = (TableMapping) p.getMapping( CPSCrop.class, CROP_VAR_TABLE);
-
-      String condExp = tm.getColumnNameForMethod( "getCropName" ) + " = " + escapeValue( cropName );
+      
+      String condExp = "crop_name = " + escapeValue( cropName );
       
       varName = escapeValue( varName );
       
       if ( varName == null || varName.equalsIgnoreCase( "null" ) || varName.equals("") )
-         condExp += " AND " + tm.getColumnNameForMethod( "getVarietyName" ) + " IS NULL";
+         condExp += " AND var_name IS NULL";
       else
-         condExp += " AND " + tm.getColumnNameForMethod( "getVarietyName" ) + " = " + varName;
-
-      String selectSQL = tm.getSelectWhereSql() + condExp;
-
-      debug( "Looking up variety info with query: " + selectSQL );
+         condExp += " AND var_name = " + varName;
       
-      CPSCrop c = p.read( CPSCrop.class, selectSQL );
-      if ( c == null ) {
-          debug( "Couldn't ready variety info, returning empty crop" );
-          c = new CPSCrop();
+      try {
+         return resultSetAsCrop( query.submitQuery( "CROPS_VARIETIES", "*", condExp ));
+      } catch ( SQLException e ) { 
+         e.printStackTrace(); 
+         return new CPSCrop();
       }
-      else
-         performInheritanceForCropVar( c );
+   }
+   
+   /* Another TODO: we could totally automate this with an iterator:
+    *  if ( datum instanceof String )
+    *     datum.setDatum( captureString( rs.getString( datum.getColumnName() ))
+    *  and so on...
+    */  
+   // TODO this is where we can implement crop dependencies
+   // if a value is blank, leave it blank
+   // if a value is null, we can request that info from
+   //    for crops: the similar crop (var_name == null)
+   //    for varieties: the crop
+   private CPSCrop resultSetAsCrop( ResultSet rs ) throws SQLException {
+      
+      CPSCrop crop = new CPSCrop();
 
-      return c;
+// Not yet implemented (11/29/08)
+//        l.add( new ColumnStruct( "tp_pot_up",      CPSDataModelConstants.PROP_TP_POT_UP,       "tp_pot_up",       null, false, true,  true,  false, false, "Pot up? (TP)" ));
+//        l.add( new ColumnStruct( "tp_pot_up_notes",CPSDataModelConstants.PROP_TP_POT_UP_NOTES, "tp_pot_up_notes", null, false, true,  true,  false, false, "Plug Flat Size or Capacity" ));
+
+      
+      // move to the first (and only) row
+      if ( rs.next() ) {
+         try {
+            
+            crop.setID( rs.getInt( "id" ));
+            crop.setCropName( captureString( rs.getString( "crop_name" ) ));            
+            crop.setVarietyName( captureString( rs.getString( "var_name" ) ));
+            crop.setFamilyName( captureString( rs.getString( "fam_name" ) ));
+         
+            crop.setMaturityDays( getInt( rs, "maturity" ) );
+
+         } catch ( SQLException ignore ) { HSQLDB.debug( "HSQLDB", "WARNING: " + ignore.getMessage() ); }
+         
+         try {
+            
+            
+            // we have to go through these acrobatics because these fields
+            // are inheritable and can be null
+            boolean b = rs.getBoolean( "direct_seed" );
+            if ( rs.wasNull() )
+                 crop.setDirectSeeded( (Boolean) null );
+            else
+                 crop.setDirectSeeded( b );
+
+            crop.setDSMaturityAdjust( getInt( rs, "ds_mat_adjust" ));
+            crop.setDSRowsPerBed( getInt( rs, "ds_rows_p_bed" ) );
+            crop.setDSSpaceBetweenRow( getInt( rs, "ds_row_space" ) );
+            crop.setDSPlantNotes( captureString( rs.getString( "ds_plant_notes" )));
+            
+          } catch ( SQLException ignore ) { HSQLDB.debug( "HSQLDB", "WARNING: " + ignore.getMessage() ); }
+         
+         try {
+
+            boolean b = rs.getBoolean( "transplant" );
+            if ( rs.wasNull() )
+               crop.setTransplanted( (Boolean) null );
+            else
+               crop.setTransplanted( b );
+            
+            crop.setTPMaturityAdjust( getInt( rs, "tp_mat_adjust" ));
+            crop.setTPRowsPerBed( getInt( rs, "tp_rows_p_bed" ));
+            crop.setTPSpaceInRow( getInt( rs, "tp_inrow_space" ));
+            crop.setTPSpaceBetweenRow( getInt( rs, "tp_row_space" ));
+            crop.setTPFlatSize( captureString( rs.getString( "tp_flat_size" )));
+            crop.setTPTimeInGH( getInt( rs, "tp_time_in_gh" ));
+            crop.setTPPlantNotes( captureString( rs.getString( "tp_plant_notes" )));
+
+         } catch ( SQLException ignore ) { HSQLDB.debug( "HSQLDB", "WARNING: " + ignore.getMessage() ); }
+         
+         try {
+            
+            crop.setYieldPerFoot( getFloat( rs, "yield_p_foot" ));
+            crop.setYieldNumWeeks( getInt( rs, "yield_num_weeks" ));
+            crop.setYieldPerWeek( getInt( rs, "yield_p_week" ));
+            crop.setCropYieldUnit( captureString( rs.getString( "crop_unit" )));
+            crop.setCropUnitValue( getFloat( rs, "crop_unit_value" ));
+
+         } catch ( SQLException ignore ) { HSQLDB.debug( "HSQLDB", "WARNING: " + ignore.getMessage() ); }
+         
+         try {
+
+            boolean b = rs.getBoolean( "frost_hardy" );
+            if ( rs.wasNull() )
+                 crop.setFrostHardy( (Boolean) null );
+            else
+                 crop.setFrostHardy( b );
+
+            crop.setBotanicalName( captureString( rs.getString( "bot_name" ) ) );
+            crop.setCropDescription( captureString( rs.getString("description") ));
+            crop.setGroups( captureString( rs.getString( "groups" ) ));
+            crop.setOtherRequirements( captureString( rs.getString( "other_req" ) ));
+            crop.setKeywords( captureString( rs.getString( "keywords" ) ));
+            crop.setNotes( captureString( rs.getString( "notes" ) ));
+            
+          } catch ( SQLException ignore ) { HSQLDB.debug( "HSQLDB", "WARNING: " + ignore.getMessage() ); }
+         
+         
+          /* for varieties, inherit info from their crop, too */
+          if ( ! crop.getVarietyName().equals( "" ) ) {
+              CPSCrop superCrop = getCropInfo( crop.getCropName() );
+              crop.inheritFrom( superCrop );            
+          }
+            
+      }
+      
+      return crop;
    }
 
    public void updateCrop( CPSCrop crop ) {
-      HSQLDBCreator.updateCrop( p, crop );
+      HSQLDBCreator.updateCrop( con, columnMap, crop );
       updateDataListeners();
    }
    
-   public void updateCrops( CPSCrop changes, List<Integer> ids ) {
-      HSQLDBCreator.updateCrops( p, columnMap, changes, ids );
+   public void updateCrops( CPSCrop changes, ArrayList<Integer> ids ) {
+      HSQLDBCreator.updateCrops( con, columnMap, changes, ids );
       updateDataListeners();
    }
 
    public CPSCrop createCrop(CPSCrop crop) {
-      int newID = HSQLDBCreator.insertCrop( p, crop );
+      int newID = HSQLDBCreator.insertCrop( con, columnMap, crop );
+      // TODO is this really a good idea?
       updateDataListeners();
       if ( newID == -1 )
          return new CPSCrop();
@@ -516,45 +679,20 @@ public class HSQLDB extends CPSDataModelSQL implements CPSConfigurable {
    }
    
    public void deleteCrop( int cropID ) {
-       CPSCrop c = p.readByPrimaryKey( CROP_VAR_TABLE, CPSCrop.class, cropID );
-       p.delete( CROP_VAR_TABLE, c );
+       HSQLDBCreator.deleteRecord(con, "CROPS_VARIETIES", cropID);   
        updateDataListeners();
    }
-
-
-   protected void performInheritanceForCropVar( CPSCrop crop ) {
-
-      if ( crop == null ) return;
-
-      if ( crop.isVariety() ) {
-
-         debug( "Crop [ "+ crop.getCropName() + ": " + crop.getVarietyName() + " ] is a variety, looking up inheritance info." );
-         
-         CPSCrop parent = getCropInfo( crop.getCropName() );
-         if ( parent != null && parent.getID() != -1 ) {
-            debug( "Inheriting from crop " + parent.getCropName() );
-            crop.inheritFrom( parent );
-         }
-
-      }
-   }
-
-
-   /* ********************************************************************************************************* */
-   /* Planting methods */
-   /* ********************************************************************************************************* */
-
-
+   
    public void deletePlanting( String planName, int plantingID ) {
-       CPSPlanting planting = p.readByPrimaryKey( planName, CPSPlanting.class, plantingID );
-       p.delete( planName, planting );
+       HSQLDBCreator.deleteRecord( con, planName, plantingID );
        updateDataListeners();
    }
    
    // also called with "empty" or new CPSPlantings, so should handle case where
    // the "cropID" is not valid
    public CPSPlanting createPlanting( String planName, CPSPlanting planting ) {
-      int newID = HSQLDBCreator.insertPlanting( p, planName, planting );
+      int cropID = getVarietyInfo( planting.getCropName(), planting.getVarietyName() ).getID();
+      int newID = HSQLDBCreator.insertPlanting( con, columnMap, planName, planting, cropID );
       updateDataListeners();
       if ( newID == -1 )
          return new CPSPlanting();
@@ -563,81 +701,279 @@ public class HSQLDB extends CPSDataModelSQL implements CPSConfigurable {
    }
 
    
+   /* we make the assumption that we're zero-based, ResultSets are not */
    public CPSPlanting getPlanting( String planName, int id ) {
-
-      CPSPlanting planting;
-      TableMapping tm = (TableMapping) p.getMapping( CPSPlanting.class, planName );
-
+      
       if ( id != -1 )
-         planting = p.read( CPSPlanting.class, tm.getSelectSql(), new Object[]{ new Integer( id ) } );
-      else
-         return new CPSPlanting(); // inheriting not necessary
-
-      performInheritanceForPlanting( planting );
-
-      return planting;
-
+         try {
+            // TODO figure out better way to handle result caching
+            // we could just make this a string based query (ie getCropInfoForRow
+            // disabling this makes it a simple query on an ID
+            if ( false && rsListCache != null ) {
+               rsListCache.absolute( id + 1 );
+               id = rsListCache.getInt( "id" );
+            }
+            rsPlantCache = query.submitQuery( planName, "*", "id = " + id );
+            return resultSetAsPlanting( rsPlantCache );
+         }
+         catch ( SQLException e ) { e.printStackTrace(); }
+      
+      return new CPSPlanting();
    }
 
-   public void updatePlanting( String planName, CPSPlanting planting ) {
-      HSQLDBCreator.updatePlanting( p, planName, planting );
-      updateDataListeners();
+   public void updatePlanting( String planName, CPSPlanting changes ) {
+//      CPSCrop c = getVarietyInfo( planting.getCropName(), planting.getVarietyName() );
+      ArrayList<Integer> changedID = new ArrayList();
+      changedID.add( new Integer( changes.getID() ));
+//      HSQLDBCreator.updatePlanting( con, planName, planting, c.getID() );
+      updatePlantings( planName, changes, changedID );
+//      updateDataListeners();
    }
    
-   public void updatePlantings( String planName, CPSPlanting changes, List<Integer> changedIDs ) {
+   public void updatePlantings( String planName, CPSPlanting changes, ArrayList<Integer> changedIDs ) {
 
       debug( "saving changes to plan " + planName + ": " + changes.toString() );
 
       ArrayList<Integer> cropIDs = new ArrayList();
       for ( Integer i : changedIDs ) {
-         CPSPlanting planting = getPlanting( planName, i.intValue() );
-
-         // I'm not really sure what these are doing or if they're necessary.  Can anyone clarify?
-         if ( changes.getDatum( CPSPlanting.PROP_CROP_NAME ).isNotNull() )
-            planting.setCropName( changes.getCropName() );
-         if ( changes.getDatum( CPSPlanting.PROP_VAR_NAME).isNotNull() )
-            planting.setVarietyName( changes.getVarietyName() );
+         CPSPlanting p = getPlanting( planName, i.intValue() );
+         if ( changes.getCropNameState().isValid() )
+            p.setCropName( changes.getCropName() );
+         if ( changes.getVarietyNameState().isValid() )
+            p.setVarietyName( changes.getVarietyName() );
          
-         int cropID = getVarietyInfo( planting.getCropName(), planting.getVarietyName() ).getID();
+         int cropID = getVarietyInfo( p.getCropName(), p.getVarietyName() ).getID();
          
          if ( cropID == -1 )
-            cropID = getCropInfo( planting.getCropName() ).getID();
+            cropID = getCropInfo( p.getCropName() ).getID();
          
          // TODO error if cropID == -1 again
          
          cropIDs.add( new Integer( cropID  ));
       }
       
-      HSQLDBCreator.updatePlantings( p, columnMap, planName, changes, changedIDs, cropIDs );
+      HSQLDBCreator.updatePlantings( con, columnMap, planName, changes, changedIDs, cropIDs );
       updateDataListeners();
    }
+   
+   private CPSPlanting resultSetAsPlanting( ResultSet rs ) throws SQLException {
+      return resultSetAsPlanting( rs, false );
+   }
+   private CPSPlanting resultSetAsPlanting( ResultSet rs, boolean summedPlanting ) throws SQLException {
+      
+      CPSPlanting p = new CPSPlanting();
 
-   protected void performInheritanceForPlanting( CPSPlanting planting ) {
+//      debug( "converting result to planting:\n" + toXML( rs ) );
+//      rs.beforeFirst();
 
-      if ( planting == null ) return;
+      // move to the first (and only) row
+      if ( rs.next() ) {
+         
+          // sometimes it's OK for some columns not to exist.  Instead of surrounding each "get..."
+          // with a try clause, we'll group this into logical components
+         try {
 
-      debug( "Looking up inheritance info for planting of [ " + planting.getCropName() + " : " + planting.getVarietyName() + " ]" );
-      debug( "Before inheritance, planting looks like:\n" + planting.toString() );
+            p.setID( rs.getInt( "id" ));
+            p.setCropName( captureString( rs.getString( "crop_name" ) ));            
+            p.setVarietyName( captureString( rs.getString( "var_name" ) ));
+            p.setLocation( captureString( rs.getString( "location" )));
 
-      CPSCrop parent = getVarietyInfo( planting.getCropName(), planting.getVarietyName() );
+          } catch ( SQLException ignore ) { 
+            if ( !summedPlanting )
+                HSQLDB.debug( "HSQLDB", ignore.getMessage() ); 
+          }
+         
+         try {           
 
-      if ( parent != null && parent.getID() != -1 ) {
-         debug( "Inheriting info for planting of [ " + planting.getCropName() + " : " + planting.getVarietyName() + " ] from crop [ " +
-                 parent.getCropName() + " : " + parent.getVarietyName() + " ]" );
-         planting.inheritFrom( parent );
+            p.setDateToPlantPlanned( captureDate( rs.getDate( "date_plant_plan" )));
+            p.setDateToTPPlanned( captureDate( rs.getDate( "date_tp_plan" )));
+            p.setDateToHarvestPlanned( captureDate( rs.getDate( "date_harvest_plan" )));
+
+            p.setDateToPlantActual( captureDate( rs.getDate( "date_plant_actual" )));
+            p.setDateToTPActual( captureDate( rs.getDate( "date_tp_actual" )));
+            p.setDateToHarvestActual( captureDate( rs.getDate( "date_harvest_actual" )));
+
+            p.setDonePlanting( rs.getBoolean( "done_plant" ));
+            p.setDoneTP( rs.getBoolean( "done_TP" ));
+            p.setDoneHarvest( rs.getBoolean( "done_harvest" ));
+            p.setIgnore( rs.getBoolean( "ignore" ));
+
+          } catch ( SQLException ignore ) { 
+            if ( !summedPlanting )
+               HSQLDB.debug( "HSQLDB", ignore.getMessage() );
+         }
+
+         try {
+
+            // record DS only info
+
+            p.setDirectSeeded( true );
+
+            p.setMatAdjust( getInt( rs, "ds_mat_adjust" ));
+            p.setRowsPerBed( getInt( rs, "ds_rows_p_bed" ));
+            p.setRowSpacing( getInt( rs, "ds_row_space" ));
+            p.setPlantingNotesInherited( captureString( rs.getString( "ds_crop_notes" )));
+
+         } catch ( SQLException ignore ) {
+            if ( !summedPlanting )
+               HSQLDB.debug( "HSQLDB", ignore.getMessage() );
+         }
+
+         try {
+
+            // record TP only info
+
+            p.setDirectSeeded( false );
+
+            p.setMatAdjust( getInt( rs, "tp_mat_adjust" ));
+            p.setRowsPerBed( getInt( rs, "tp_rows_p_bed" ));
+            p.setInRowSpacing( getInt( rs, "inrow_space" ) );
+            p.setRowSpacing( getInt( rs, "tp_row_space" ));
+            p.setFlatSize( captureString( rs.getString( "flat_size" )));
+            p.setTimeToTP( getInt( rs, "time_to_tp" ));
+            p.setPlantingNotesInherited( captureString( rs.getString( "tp_crop_notes" )));
+
+         } catch ( SQLException ignore ) {
+            if ( !summedPlanting )
+               HSQLDB.debug( "HSQLDB", ignore.getMessage() );
+         }
+
+         try {
+
+            // now start over and set direct_seed to what it "should" be
+            boolean b = rs.getBoolean( "direct_seed" );
+            if ( rs.wasNull() )
+                 p.setDirectSeeded( (Boolean) null );
+            else
+                 p.setDirectSeeded( b );
+
+            p.setMaturityDays( getInt( rs, "maturity") );
+            p.setPlantingNotes( captureString( rs.getString( "plant_notes_spec" )));
+
+         } catch ( SQLException ignore ) {
+            if ( !summedPlanting )
+               HSQLDB.debug( "HSQLDB", ignore.getMessage() );
+         }
+
+         try {
+
+            // record "general" info that might be DS or TP, based on whether planting is DS or TP
+
+            p.setMatAdjust( getInt( rs, "mat_adjust" ));
+            p.setRowsPerBed( getInt( rs, "rows_p_bed" ));
+            p.setRowSpacing( getInt( rs, "row_space" ));
+            p.setPlantingNotesInherited( captureString( rs.getString( "planting_notes" )));
+
+         } catch ( SQLException ignore ) {
+            if ( !summedPlanting )
+               HSQLDB.debug( "HSQLDB", ignore.getMessage() );
+         }
+
+         try {
+             
+             // These are all used for the "summed" plantings
+            p.setBedsToPlant( getFloat( rs, "beds_to_plant") );
+            p.setPlantsNeeded( getInt( rs, "plants_needed") );
+            p.setPlantsToStart( getInt( rs, "plants_to_start") );
+            p.setRowFtToPlant( getInt( rs, "rowft_to_plant") );
+            p.setFlatsNeeded( getFloat( rs, "flats_needed") );
+            p.setTotalYield( getFloat( rs, "total_yield" ));
+            
+          } catch ( SQLException ignore ) { 
+            if ( !summedPlanting )
+               HSQLDB.debug( "HSQLDB", ignore.getMessage() );
+         }
+         
+         
+         try {
+
+            p.setYieldPerFoot( getFloat( rs, "yield_p_foot" ) ) ;
+            p.setYieldNumWeeks( getInt( rs, "yield_num_weeks" ));
+            p.setYieldPerWeek( getFloat( rs, "yield_p_week" ));
+            p.setCropYieldUnit( captureString( rs.getString( "crop_unit" )));
+            p.setCropYieldUnitValue( getFloat( rs, "crop_unit_value" ));
+
+            boolean b = rs.getBoolean( "frost_hardy" );
+            if ( rs.wasNull() )
+                 p.setFrostHardy( (Boolean) null );
+            else
+                 p.setFrostHardy( b );
+
+            p.setGroups( captureString( rs.getString( "groups" ) ));
+            p.setOtherRequirements( captureString( rs.getString( "other_req" ) ));
+            p.setKeywords( captureString( rs.getString( "keywords" ) ));
+            p.setNotes( captureString( rs.getString( "notes" ) ));
+          } catch ( SQLException ignore ) { 
+            if ( !summedPlanting )
+               HSQLDB.debug( "HSQLDB", ignore.getMessage() );
+         }
+         
+         try {            
+            p.setCustomField1( rs.getString( "custom1" ));
+            p.setCustomField2( rs.getString( "custom2" ));
+            p.setCustomField3( rs.getString( "custom3" ));
+            p.setCustomField4( rs.getString( "custom4" ));
+            p.setCustomField5( rs.getString( "custom5" ));
+          } catch ( SQLException ignore ) { 
+            if ( !summedPlanting )
+               HSQLDB.debug( "HSQLDB", ignore.getMessage() );
+         }
+         
+         try {
+            
+            /* handle data inheritance */
+            // we have to call a get... method before we can call wasNull
+            int cid = rs.getInt( "crop_id" );
+            if ( ! rs.wasNull() )
+                 p.inheritFrom( getCropInfo( cid ) );
+            
+//          } catch ( SQLException ignore ) {}
+          } catch ( SQLException ignore ) { 
+            if ( !summedPlanting )
+               HSQLDB.debug( "HSQLDB", ignore.getMessage() );
+         }
+         
       }
-      else
-         debug( "Couldn't find crop/var info to inherit." );
+      
+      p.finishUp();
 
-      debug( "After inheritance, planting looks like:\n" + planting.toString() );
-
+      HSQLDB.debug( "HSQLDB", "Returning planting:\n" + p.toString() );
+      return p;
    }
 
+   public ArrayList<CPSPlanting> getCropPlanAsList( String planName ) {
+       
+       ArrayList<CPSPlanting> l = new ArrayList<CPSPlanting>();
+       
+       // this is excessive but functional; might be better/simple to create a
+       // custom query that just returns the id column as a list or something
+       TableModel tm = getCropPlan( planName );
+       
+       for ( int row = 0; row < tm.getRowCount(); row++ ) {
+           // the results will contain the crop_id, which the HSQLTableModel will
+           // try to hide, so we have to "trick" it into actually giving it to us
+           l.add( this.getPlanting( planName, ((Integer) tm.getValueAt( row, -1 ) ).intValue() ) );
+       }
+      
+       return l;
+   }
+   
+   public ArrayList<CPSCrop> getCropsAndVarietiesAsList() { 
+   
+       ArrayList<CPSCrop> l = new ArrayList<CPSCrop>();
+        
+       TableModel tm = getCropAndVarietyTable();
+       
+       for ( int row = 0; row < tm.getRowCount(); row++ ) {
+           // the results will contain the crop_id, which the HSQLTableModel will
+           // try to hide, so we have to "trick" it into actually giving it to us
+           l.add( this.getCropInfo( ((Integer) tm.getValueAt( row, -1 ) ).intValue() ) );
+       }
+      
+       return l;
 
-   /* ********************************************************************************************************* */
-   /* Utility methods */
-   /* ********************************************************************************************************* */
-
+   }
+   
    /** 
     * SQL distinguishes between values that are NULL and those that are just
     * blank.  This method is meant to capture our default values
@@ -703,11 +1039,7 @@ public class HSQLDB extends CPSDataModelSQL implements CPSConfigurable {
          return o.toString();
    }
 
-   public static String escapeTableName( String t ) {
-        return escapeTableName( t, ESCAPE_WITH_DOUBLE_QUOTES );
-   }
-
-   public static String escapeTableName( String t, boolean useSingleQuotes ) {
+   public static String escapeTableName( String t ) {       
        // if the "table" is an embedded select statement (enclosed in "()")
        // then don't quote it
        if ( t.trim().matches( "\\(.*\\)" ))
@@ -716,10 +1048,7 @@ public class HSQLDB extends CPSDataModelSQL implements CPSConfigurable {
            // if the string contains a quotation mark, escape all quotation marks
            if ( t.matches( ".*\".*" ) )
                t = t.replaceAll( "\\\"", "\"\"" );
-           if ( useSingleQuotes )
-               return "'" + t + "'";
-           else
-               return "\"" + t + "\"";
+           return "\"" + t + "\"";
        }
    }
    
@@ -778,11 +1107,11 @@ public class HSQLDB extends CPSDataModelSQL implements CPSConfigurable {
    }
    
    /**
-    * Create a comma delimited string of integers from an List of Integers.
-    * @param ids List<Integer> to convert
+    * Create a comma delimited string of integers from an ArrayList of Integers.
+    * @param ids ArrayList<Integer> to convert
     * @return comma delimited string of integers
     */
-   public static String intListToIDString( List<Integer> ids ) {
+   public static String intListToIDString( ArrayList<Integer> ids ) {
       String idString = "";
       for ( Integer i : ids )
          idString += i.toString() + ", ";
@@ -790,7 +1119,7 @@ public class HSQLDB extends CPSDataModelSQL implements CPSConfigurable {
       return idString;
    }
    
-   public static String listToCSVString( List l ) {
+   public static String listToCSVString( ArrayList l ) {
        String s = "";
        for ( Object o : l )
            s += o.toString() + ", ";
@@ -837,7 +1166,7 @@ public class HSQLDB extends CPSDataModelSQL implements CPSConfigurable {
 
    
    
-   public String propertyNumListToColumnString( int recordType, List<Integer> props ) {
+   public String propertyNumListToColumnString( int recordType, ArrayList<Integer> props ) {
       String cols = "";
       for ( Integer prop : props )
          if ( recordType == CPSDataModelConstants.RECORD_TYPE_CROP )
@@ -847,15 +1176,188 @@ public class HSQLDB extends CPSDataModelSQL implements CPSConfigurable {
       cols = cols.substring( 0, cols.lastIndexOf( ", " ));
       return cols;
    }
+   
+   
+   /* based upon a complex filter including various boolean values and a
+    * space delimited uesr input, create an 
+    * SQL expression that can be used as a WHERE clause.  Does not include
+    * the WHERE keyword
+    */
+   private String buildComplexFilterExpression( ArrayList<String> colList, CPSComplexPlantingFilter filter ) {
+       
+       String filterString = buildGeneralFilterExpression( colList, filter );
+       
+       if ( filterString == null )
+           filterString = "";
+       
+       
+       if ( filter != null && filter.isViewLimited() ) {
+          
+           if ( ! filterString.equals( "" ) )
+               filterString += " AND ";
+       
+           // operator <> means not equal
+           if ( true )
+//              filterString += " ignore <> TRUE ";
+              filterString += " ( ignore = FALSE OR ignore IS NULL )";
+           filterString += " AND ";
+           
+           if ( filter.filterOnPlantingMethod() ) {
+//               filterString += "time_to_tp " + (( filter.filterMethodDirectSeed() ) ? " IS " : " IS NOT " ) + " NULL AND ";
+//               filterString += "direct_seed = " + 
+//                               (( filter.filterMethodDirectSeed() ) ? " TRUE " : " FALSE OR direct_seed IS NULL " ) + 
+//                               " AND ";
+              if ( filter.filterMethodDirectSeed() )
+                 filterString += " direct_seed = TRUE ";
+              else
+//                 filterString += " direct_seed <> TRUE ";
+                 filterString += " ( direct_seed = FALSE OR direct_seed IS NULL )";
+              filterString += " AND ";
+           }
+           
+           // TODO use the propNumToPropName method to abstract out the column names
+           
+           if ( filter.filterOnPlanting() ) {
+//               filterString += "done_plant = " + (( filter.isDonePlanting() ) ? "TRUE " : "FALSE " ) + " AND ";
+              if ( filter.isDonePlanting() )
+                 filterString += "done_plant = TRUE ";
+              else
+                 filterString += " ( done_plant = FALSE OR done_plant IS NULL ) ";
+              filterString += " AND ";
+           }
+           if ( filter.filterOnTransplanting() ) {
+//               filterString += "done_tp = " + (( filter.isDoneTransplanting() ) ? "TRUE " : "FALSE " ) + " AND ";
+              if ( filter.isDoneTransplanting() )
+                 filterString += "done_tp = TRUE ";
+              else
+                 filterString += " ( done_tp = FALSE OR done_tp IS NULL ) ";
+              filterString += " AND ";
+           }
+           if ( filter.filterOnHarvest() ) {
+//               filterString += "done_harvest = " + (( filter.isDoneHarvesting() ) ? "TRUE " : "FALSE " ) + " AND ";
+                if ( filter.isDoneHarvesting() )
+                 filterString += "done_harvest = TRUE ";
+              else
+                 filterString += " ( done_harvest = FALSE OR done_harvest IS NULL ) ";
+              filterString += " AND ";
+           }
+           
+           if ( filter.filterOnAnyDate() ) {
+               if      ( filter.getAnyDateRangeEnd() == null )
+                   filterString += " ( date_plant   >= " + escapeValue( filter.getAnyDateRangeStart() ) + " OR " +
+                                   "   date_tp      >= " + escapeValue( filter.getAnyDateRangeStart() ) + " OR " +
+                                   "   date_harvest >= " + escapeValue( filter.getAnyDateRangeStart() ) + " ) ";
+               else if ( filter.getAnyDateRangeStart() == null )
+                   filterString += " ( date_plant   <= " + escapeValue( filter.getAnyDateRangeEnd() ) + " OR " +
+                                   "   date_tp      <= " + escapeValue( filter.getAnyDateRangeEnd() ) + " OR " +
+                                   "   date_harvest <= " + escapeValue( filter.getAnyDateRangeEnd() ) + " ) ";
+               else { // both != null
+                   filterString += " ( date_plant   BETWEEN " + escapeValue( filter.getAnyDateRangeStart() ) + " AND " +
+                                                                escapeValue( filter.getAnyDateRangeEnd() )   + " OR ";
+                   filterString += "   date_tp      BETWEEN " + escapeValue( filter.getAnyDateRangeStart() ) + " AND " +
+                                                                escapeValue( filter.getAnyDateRangeEnd() )   + " OR ";
+                   filterString += "   date_harvest BETWEEN " + escapeValue( filter.getAnyDateRangeStart() ) + " AND " +
+                                                                escapeValue( filter.getAnyDateRangeEnd() )   + " ) ";
+               }
+              filterString += " AND ";
+           }
+           else {
+              if ( filter.filterOnPlantingDate() ) {
+                 if ( filter.getPlantingRangeEnd() == null )
+                    filterString += "date_plant >= " + escapeValue( filter.getPlantingRangeStart() );
+                 else if ( filter.getPlantingRangeStart() == null )
+                    filterString += "date_plant <= " + escapeValue( filter.getPlantingRangeEnd() );
+                 else // both != null
+                    filterString += "date_plant BETWEEN " + escapeValue( filter.getPlantingRangeStart() ) + " AND " +
+                                                            escapeValue( filter.getPlantingRangeEnd() );
+                 filterString += " AND ";
+              }
+           
+              if ( filter.filterOnTPDate() ) {
+                 if ( filter.getTpRangeEnd() == null )
+                    filterString += "date_tp >= " + escapeValue( filter.getTpRangeStart() );
+                 else if ( filter.getTpRangeStart() == null )
+                    filterString += "date_tp <= " + escapeValue( filter.getTpRangeEnd() );
+                 else // both != null
+                    filterString += "date_tp BETWEEN " + escapeValue( filter.getTpRangeStart() ) + " AND " +
+                                                         escapeValue( filter.getTpRangeEnd() );
+                 filterString += " AND ";
+              }
+           
+              if ( filter.filterOnHarvestDate() ) {
+                 if ( filter.getHarvestDateEnd() == null )
+                    filterString += "date_harvest >= " + escapeValue( filter.getHarvestDateStart() );
+                 else if ( filter.getHarvestDateStart() == null )
+                    filterString += "date_harvest <= " + escapeValue( filter.getHarvestDateEnd() );
+                 else // both != null
+                    filterString += "date_harvest BETWEEN " + escapeValue( filter.getHarvestDateStart() ) + " AND " +
+                                                              escapeValue( filter.getHarvestDateEnd() );
+                 filterString += " AND ";
+              }
+           }
+           
+           // remove the last instance of " AND ", which is at the end of the string
+           filterString = filterString.substring( 0, filterString.lastIndexOf( " AND " ));
+       }
+           
+       debug( "Using filter string: " + filterString );
+       
+       return filterString;
+       
+   }
+   
+   /* based upon a simple filter of space delimited uesr input, create an 
+    * SQL expression that can be used as a WHERE clause.  Does not include
+    * the WHERE
+    */
+   private String buildGeneralFilterExpression( ArrayList<String> colList, CPSComplexFilter filter ) {
+      
+      if ( filter == null )
+          return null;
+      
+      String filterString = filter.getFilterString();
+       
+      if ( filterString == null || filterString.length() == 0 )
+         return null;
+      
+      // TODO: if filterString not all lower, then omit LOWER below
+      filterString = filterString.toLowerCase();
+      
+      String exp = "";
+      // loop over the filter string (seperated by spaces)
+      for ( String filt : filterString.split(" ") ) {
+          
+          String innerExp = "";
+                  
+          // for cases where just spaces or double spaces are entered
+          if ( filt.length() == 0 )
+              continue;
+          
+          // loop over the list of column names (seperated by commas)
+          for ( String col : colList ) {
+              if ( col.startsWith("date") )
+                  col = "MONTHNAME( " + col + " )";
+              innerExp += "LOWER( " + col + " ) LIKE " +
+                          escapeValue( "%" + filt + "%" ) + " OR ";
+          }
+          // remove the last " OR " and tack on an " AND "
+          exp += " ( " + innerExp.substring( 0, innerExp.lastIndexOf( " OR " )) + " ) AND ";
+      }
 
+      // strip off the final " AND "
+      if ( exp.length() > 0 )
+           exp = exp.substring( 0, exp.lastIndexOf( " AND " ) );
+      
+       return exp;
+       
+   }
    
    public int shutdown() {
       try {
           // TODO check to see which which mode we're in: if server, don't do the following
-          // TODO port to Persist in a better manner, perhaps add a shutdown() method to Persist?
-         Statement st = p.getConnection().createStatement();
+         Statement st = con.createStatement();
          st.execute("SHUTDOWN");
-         p.getConnection().close();
+         con.close();
       }
       catch ( SQLException ex ) {
          ex.printStackTrace();
@@ -881,7 +1383,14 @@ public class HSQLDB extends CPSDataModelSQL implements CPSConfigurable {
    public void resetConfigurationToDefaults () {}
    public void saveConfiguration () {}
 
-   
+   /**
+    * @return The JDBC Connection that this SQL DataModel is using.  Could be null.
+    */
+   @Override
+   public Connection getConnection () {
+      return con;
+   }
+
    private static String toXML(ResultSet rs) throws SQLException {
 
         ResultSetMetaData rsmd = rs.getMetaData();

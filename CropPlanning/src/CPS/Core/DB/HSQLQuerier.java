@@ -32,7 +32,6 @@ import javax.swing.table.TableModel;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 /**
@@ -209,13 +208,14 @@ public class HSQLQuerier {
    }
    
    
-   public static synchronized List<String> getDistinctValuesForColumn( Connection con, List<String> tables, String column ) {
+   public static synchronized ArrayList<String> getDistinctValuesForColumn( Connection con, ArrayList<String> tables, String column ) {
        
        ArrayList<String> l = new ArrayList<String>();
        Set set = new HashSet();
       
        for ( String table : tables ) {
-           set.addAll( HSQLQuerier.getDistinctValuesForColumn( con, table, column ) );
+           l = HSQLQuerier.getDistinctValuesForColumn( con, table, column );
+           set.addAll( l );
        }
       
        l.clear();
@@ -225,7 +225,7 @@ public class HSQLQuerier {
        
    }
    
-   public static synchronized List<String> getDistinctValuesForColumn( Connection con, String table, String column ) {
+   public static synchronized ArrayList<String> getDistinctValuesForColumn( Connection con, String table, String column ) {
        if ( table == null || column == null ) 
            return new ArrayList<String>();
        
@@ -256,19 +256,20 @@ public class HSQLQuerier {
    
    
    /**
-    * A method to create queries which conflate the results such that column values are not null only if EVERY row queried
+    * A method to create and submit queries which conflate the results and return a
+    * single row ResultSet whose column values are not null only if EVERY row queried 
     * contains identical values.  If any row in the selection contains a different value,
-    * then the value for that column in the results is NULL.
+    * then the value for that column in the ResultSet is NULL.
     * 
     * @param table Name of the table to query.
     * @param columns ArrayList<String> of all columns to query.
     * @param ids ArrayList<Integer> of all row indices (actually, records with column id == id)
-    * @return an SQL statement, ready to be handed off to the db
+    * @return A ResultSet with only one row whose column values are either NULL (for heterogeneous
+    *         column values data) or the value which is homogeneous across all queried rows.
     */
-   public String buildCommonInfoQuery( String table,
-                                       String[] columns,
-                                       List<Integer> ids ) {
-
+   public synchronized ResultSet submitCommonInfoQuery( String table,
+                                                         ArrayList<String> columns,
+                                                         ArrayList<Integer> ids ) {
       String idString = HSQLDB.intListToIDString(ids);
       
       /* start the query string */
@@ -288,8 +289,7 @@ public class HSQLQuerier {
 
       HSQLDB.debug( "HSQLQuerier", "COMMON INFO query:\n" + query );
       
-      return query;
-      
+      return submitRawQuery( con, query, false );
    }
 
    
@@ -306,7 +306,27 @@ public class HSQLQuerier {
        return submitCalculatedCropPlanQuery( planName, plantColMap, cropColMap, sumCols, null, filterExp);
        
    }
-   
+
+
+
+   public ResultSet getPlanSummary( String plan_name, ArrayList<String[]> plantColMap, ArrayList<String[]> cropColMap, boolean just_completed ) {
+
+      String q = "SELECT crop_name, COUNT(*) as Plantings, SUM( beds_to_plant ) AS beds_to_plant, SUM( rowft_to_plant ) AS rowft_to_plant, ";
+      q += " SUM( plants_needed ) AS plants_needed, SUM( flats_needed ) AS flats_needed, SUM( total_yield ) AS total_yield FROM ";
+      q += "( " + createCoalescedCropPlanQueryString( plan_name, plantColMap, cropColMap ) + " ) ";
+      q += " WHERE ( ignore = FALSE OR ignore IS NULL ) ";
+      if ( just_completed )
+         q += " AND (( direct_seed = TRUE AND done_plant = TRUE ) OR ( direct_seed = FALSE AND done_tp = TRUE )) ";
+      q += " GROUP BY crop_name ORDER BY crop_name ";
+
+      return HSQLQuerier.submitRawQuery( con, q, false );
+      
+   }
+
+
+
+
+
    public synchronized ResultSet submitCalculatedCropAndVarQuery( ArrayList<String[]> colMap,
                                                                   String displayColumns,
                                                                   String sortColumn,

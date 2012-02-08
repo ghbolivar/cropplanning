@@ -26,15 +26,15 @@ import CPS.Data.*;
 import CPS.Module.CPSExporter;
 import CPS.Module.CPSImporter;
 import CPS.Module.CPSDataModelConstants;
-import CPS.Module.CPSGlobalSettings;
 import CPS.Module.CPSModule;
+import CPS.UI.Swing.CPSTable;
 import java.util.ArrayList;
 import com.csvreader.*;
 import java.io.IOException;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
+import javax.swing.JTable;
 
 
 public class CSV extends CPSModule implements CPSExporter, CPSImporter {
@@ -49,7 +49,7 @@ public class CSV extends CPSModule implements CPSExporter, CPSImporter {
       setModuleName("CSV");
       setModuleType( MOD_TYPE_DATAMODEL );
       setModuleDescription("A CSV DataModel (for import/export only)");
-      setModuleVersion( CPSGlobalSettings.getVersion() );
+      setModuleVersion( GLOBAL_DEVEL_VERSION );
 
       exportOnly = true;
       dateValidator = new CPSDateValidator();
@@ -146,8 +146,7 @@ public class CSV extends CPSModule implements CPSExporter, CPSImporter {
   }
 
   
-   public void exportCropPlan( String filename, String planName, List<CPSPlanting> plantings ) {
-
+   public void exportCropPlan( String filename, String planName, ArrayList<CPSPlanting> plantings ) {
 
        ArrayList<CPSRecord> records = new ArrayList<CPSRecord>( plantings.size() );
        for ( CPSPlanting p : plantings )
@@ -158,7 +157,7 @@ public class CSV extends CPSModule implements CPSExporter, CPSImporter {
 
    }
 
-   public void exportCropsAndVarieties( String filename, List<CPSCrop> crops ) {
+   public void exportCropsAndVarieties( String filename, ArrayList<CPSCrop> crops ) {
 
        ArrayList<CPSRecord> records = new ArrayList<CPSRecord>( crops.size() );
        for ( CPSCrop c : crops )
@@ -167,6 +166,86 @@ public class CSV extends CPSModule implements CPSExporter, CPSImporter {
        this.exportRecords( filename, CPSDataModelConstants.RECORD_TYPE_CROP, "Crops and Varieties", records );
 
    }
+
+   public void exportJTable( String filename,
+                             String description,
+                             JTable jtable ) {
+
+      CsvWriter csvOut = new CsvWriter( filename );
+      // mark text with double quotes
+      csvOut.setTextQualifier( '"' );
+      // set default comment character to hash
+      csvOut.setComment( '#' );
+
+      try {
+         // write comment about date, time, etc
+         csvOut.writeComment( " Created by CropPlanning Software" );
+         csvOut.writeComment( " Available at http://cropplanning.googlecode.com" );
+         csvOut.writeComment( " Records exported: " + description );
+         csvOut.writeComment( " Exported: " + new Date().toString() );
+
+         // get number of columns
+         int columnCount = jtable.getColumnCount();
+
+         // declare array to hold each row
+         String[] rowBuffer = new String[columnCount];
+
+
+         // collect header information
+         for ( int col = 0; col < jtable.getColumnCount(); col++ ) {
+            String headName;
+            if ( jtable instanceof CPSTable )
+               headName = jtable.getColumnModel().getColumn( col ).getHeaderValue().toString();
+            else
+               headName = jtable.getColumnName( col );
+            rowBuffer[col] = headName;
+         }
+         // write the header row
+         csvOut.writeRecord( rowBuffer );
+
+
+         // now fill in the rest of the table
+         for ( int row = 0; row < jtable.getRowCount(); row++ ) {
+
+            // clear out the row buffer
+            rowBuffer = new String[columnCount];
+
+            // go through the columns and translate data types to text
+            for ( int col = 0; col < jtable.getColumnCount(); col++ ) {
+               Object o = jtable.getValueAt( row, col );
+               debug( "CSV", "Row " + row + " column " + col + " is a " + jtable.getColumnClass( col ).toString() );
+               debug( "CSV", "Value is " + (( o==null) ? "NULL" : o.toString()) );
+               if ( o == null )
+                  rowBuffer[col] = "";
+               else if ( o instanceof Date )
+                  rowBuffer[col] = CPSDateValidator.format( (Date) o,
+                                                            CPSDateValidator.DATE_FORMAT_SHORT_DAY_OF_WEEK );
+               else if ( o instanceof Boolean )
+                  rowBuffer[col] = o.toString();
+               else if ( o instanceof Float )
+                  rowBuffer[col] = CPSRecord.formatFloat( ( (Float) o ).floatValue(), 3 );
+               else if ( o instanceof Double )
+                  rowBuffer[col] = CPSRecord.formatFloat( ((Double) o).floatValue(), 3 );
+               else {
+                  rowBuffer[col] = o.toString();
+               }
+            }
+
+            // now write the row
+            csvOut.writeRecord( rowBuffer );
+
+         }
+
+         // write comment "EOF"
+         csvOut.writeComment( " End of file" );
+
+         // close
+         csvOut.close();
+      }
+      catch ( Exception ignore ) { ignore.printStackTrace(); }
+
+   }
+
 
    private void exportRecords( String filename, int recordType, String recordTypeDesc, ArrayList<CPSRecord> records ) {
 
@@ -236,12 +315,12 @@ public class CSV extends CPSModule implements CPSExporter, CPSImporter {
                        continue;
                    }
 
-                   Object o = d.getValue();
+                   Object o = d.getDatum();
                    if ( o instanceof java.util.Date ||
                         o instanceof java.sql.Date )
-                       row[colForDatum] = dateValidator.format( (Date) o );
+                       row[colForDatum] = dateValidator.format( (Date) d.getDatum() );
                    else
-                       row[colForDatum] = o.toString();
+                       row[colForDatum] = d.getDatum().toString();
                }
                csvOut.writeRecord( row );
            }

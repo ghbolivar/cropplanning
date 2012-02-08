@@ -26,7 +26,7 @@ package CPS.Module;
 import CPS.Data.CPSCrop;
 import CPS.Data.CPSPlanting;
 import java.util.ArrayList;
-import java.util.List;
+import javax.swing.JTable;
 
 /**
  * A simple interface for classes that provide the capabilty to export
@@ -35,10 +35,13 @@ import java.util.List;
 public interface CPSExporter {
 
     public void exportCropsAndVarieties( String filename, 
-                                         List<CPSCrop> crops );
+                                         ArrayList<CPSCrop> crops );
     public void exportCropPlan( String filename,
                                 String planName, 
-                                List<CPSPlanting> plantings );
+                                ArrayList<CPSPlanting> plantings );
+    public void exportJTable( String filename,
+                              String description,
+                              JTable jtable );
     /**
      * Returns the default file extension used by this exporter.
      * @return the default file extension WITHOUT a leading period (".")

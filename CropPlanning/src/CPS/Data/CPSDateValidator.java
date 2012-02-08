@@ -34,7 +34,6 @@ public class CPSDateValidator {
     public static String DATE_FORMAT_SHORT_DAY_OF_WEEK = "EEE MM/dd";
     public static String DATE_FORMAT_BRIEFYEAR = "MM/dd/yy";
     public static String DATE_FORMAT_FULLYEAR = "MM/dd/yyyy";
-    public static String DATE_FORMAT_JUSTMONTH = "MMMM";
     
     public static String DATE_FORMAT_SQL = "yyyy-MM-dd";
     
@@ -75,7 +74,7 @@ public class CPSDateValidator {
     }
     
     public static String format( Date d, String format ) {
-        if ( d == null || d.getTime() == 0 )
+        if ( d == null )
             return "";
         else
             return new SimpleDateFormat( format ).format( d );
@@ -128,7 +127,7 @@ public class CPSDateValidator {
             dateText = sp[0].trim();
             
             String dateShiftString = sp[1].trim();
-            if ( dateShiftString.matches( ".+[dwm]" )) {
+            if ( dateShiftString.matches( ".+[dwmy]" )) {
                 
                 // we match on w or m; trailing whitespace was already trimmed
                 // d isn't necessary since it's default
@@ -136,6 +135,8 @@ public class CPSDateValidator {
                     shiftBy = GregorianCalendar.WEEK_OF_YEAR;
                 else if ( dateShiftString.matches( ".+m" ))
                     shiftBy = GregorianCalendar.MONTH;
+                else if ( dateShiftString.matches( ".+y" ))
+                    shiftBy = GregorianCalendar.YEAR;
                 
                 // trim off the trailing character (the d, w or m)
                 dateShiftString = dateShiftString.substring( 0, dateShiftString.length() - 1 );

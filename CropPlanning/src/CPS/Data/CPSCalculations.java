@@ -34,7 +34,7 @@ import java.util.GregorianCalendar;
  *
  * @author Clayton Carter
  */
-public final class CPSCalculations {
+public class CPSCalculations {
 
    /**
     * Calculates a date to plant based upon a desired harvest date and the crops maturity days.
@@ -43,13 +43,10 @@ public final class CPSCalculations {
     * @return A planting date.
     */
    public static Date calcDatePlantFromDateHarvest( Date dateHarvest, int maturityDays, int matAdjust ) {
-      return calcDatePlantFromDateHarvest( dateHarvest, maturityDays, matAdjust, 0 );
-   }
-   public static Date calcDatePlantFromDateHarvest( Date dateHarvest, int maturityDays, int matAdjust, int weeksInGH ) {
       GregorianCalendar c = new GregorianCalendar();
       c.setTime( dateHarvest );
       // -1 ==> subtract
-      c.add( GregorianCalendar.DAY_OF_YEAR, -1 * ( maturityDays + matAdjust + weeksInGH * 7 ) );
+      c.add( GregorianCalendar.DAY_OF_YEAR, -1 * ( maturityDays + matAdjust ) );
       return c.getTime();
    }
    
@@ -67,9 +64,6 @@ public final class CPSCalculations {
    }
    
    public static Date calcDateHarvestFromDatePlant( Date datePlant, int maturityDays, int matAdjust ) {
-      return calcDateHarvestFromDatePlant( datePlant, maturityDays, matAdjust, 0 );
-   }
-   public static Date calcDateHarvestFromDatePlant( Date datePlant, int maturityDays, int matAdjust, int weeksInGH ) {
       GregorianCalendar c = new GregorianCalendar();
       c.setTime( datePlant );
       c.add( GregorianCalendar.DAY_OF_YEAR, maturityDays + matAdjust );

@@ -35,21 +35,10 @@ public class CPSBoolean {
         this( new Boolean(b) );
     }
 
-    
-    public CPSBoolean not() {
-       if ( isNull() )
-          return new CPSBoolean( null );
-       else
-          return new CPSBoolean( ! booleanValue() );
-    }
-
-
     public boolean isNull() {
         return value == null;
     }
-
-
-
+    
     public boolean booleanValue() {
         if ( isNull() )
             return false;
